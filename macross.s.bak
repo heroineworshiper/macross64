@@ -1,0 +1,67 @@
+.autoimport	on              ; imports C library functions
+.forceimport	__STARTUP__ ; imports STARTUP, INIT, ONCE
+.export		_main           ; expose mane to the C library
+.include        "zeropage.inc"
+.include        "cbm_kernal.inc"
+
+
+.segment	"CODE"
+.proc	_main: near
+
+; border color
+	lda	#5
+	sta	$d020
+	sta	$d021
+
+;    lda #$0b          ; device number for secondary address 11
+;    sta $b8           ; set secondary address
+
+; open the serial port
+    lda #2 ; logical number
+    ldx #2 ; device number
+    ldy #0 ; secondary address
+    jsr SETLFS
+
+; set filename
+    lda #2 ; length
+    ldx #<filename ; address
+    ldy #>filename ; address
+    jsr SETNAM
+    jsr OPEN
+
+    ldx #2 ; logical number
+    jsr CHKOUT
+
+; control register page 350
+;    lda #$06    ; 300 baud
+    lda #$08    ; 1200 baud
+    sta $0293
+; command register page 351
+    lda #$01
+    sta $0294
+
+; print something
+    ldx #$00          ; initialize X register for indexing
+LOOP:
+    lda MESSAGE,x     ; load the character from the message
+    beq DONE          ; if character is zero, we are done
+    jsr CHROUT         ; call CHROUT routine to send the character to the serial port
+;    inx               ; increment X register
+    jmp LOOP          ; repeat the loop
+
+DONE:
+; have to close the serial port to get it to print ready on the screen
+   rts               ; return from subroutine
+
+filename:
+    .byte $00, $00, $00, $00, $00, $00, $00, $00
+
+
+MESSAGE:
+    .byte $08, $01
+    .byte $01, $02, $03, $04, $05, $06, $07, $08
+    .byte "hello world"
+    .byte 0           ; null terminator for the message
+
+
+.endproc

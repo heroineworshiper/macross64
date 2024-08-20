@@ -1,0 +1,139 @@
+Modules list:
+-------------
+bitmapscroll_slow.o:
+    CODE              Offs=000000  Size=0004DD  Align=00001  Fill=0000
+    DATA              Offs=000000  Size=00000C  Align=00001  Fill=0000
+/root/cc65-master/lib/c64.lib(callmain.o):
+    CODE              Offs=0004DD  Size=000017  Align=00001  Fill=0000
+    DATA              Offs=00000C  Size=000004  Align=00001  Fill=0000
+/root/cc65-master/lib/c64.lib(condes.o):
+    CODE              Offs=0004F4  Size=00000C  Align=00001  Fill=0000
+    DATA              Offs=000010  Size=000025  Align=00001  Fill=0000
+    ONCE              Offs=000000  Size=00000C  Align=00001  Fill=0000
+/root/cc65-master/lib/c64.lib(crt0.o):
+    STARTUP           Offs=000000  Size=000033  Align=00001  Fill=0000
+    ONCE              Offs=00000C  Size=00001A  Align=00001  Fill=0000
+    INIT              Offs=000000  Size=00001C  Align=00001  Fill=0000
+/root/cc65-master/lib/c64.lib(exehdr.o):
+    EXEHDR            Offs=000000  Size=00000C  Align=00001  Fill=0000
+/root/cc65-master/lib/c64.lib(kernal.o):
+/root/cc65-master/lib/c64.lib(loadaddr.o):
+    LOADADDR          Offs=000000  Size=000002  Align=00001  Fill=0000
+/root/cc65-master/lib/c64.lib(pushax.o):
+    CODE              Offs=000500  Size=00001A  Align=00001  Fill=0000
+/root/cc65-master/lib/c64.lib(status.o):
+/root/cc65-master/lib/c64.lib(zerobss.o):
+    CODE              Offs=00051A  Size=000023  Align=00001  Fill=0000
+/root/cc65-master/lib/c64.lib(zeropage.o):
+    ZEROPAGE          Offs=000000  Size=00001A  Align=00001  Fill=0000
+
+
+Segment list:
+-------------
+Name                   Start     End    Size  Align
+----------------------------------------------------
+ZEROPAGE              000002  00001B  00001A  00001
+LOADADDR              0007FF  000800  000002  00001
+EXEHDR                000801  00080C  00000C  00001
+STARTUP               00080D  00083F  000033  00001
+CODE                  000840  000D7C  00053D  00001
+DATA                  000D7D  000DB1  000035  00001
+INIT                  000DB2  000DCD  00001C  00001
+ONCE                  000DCE  000DF3  000026  00001
+
+
+Exports list by name:
+---------------------
+BSOUT                     00FFD2 RLA    ST                        000090 RLZ    
+__BSS_RUN__               000DCE RLA    __BSS_SIZE__              000000 REA    
+__CONSTRUCTOR_COUNT__     000000 REA    __CONSTRUCTOR_TABLE__     000DF4 RLA    
+__DESTRUCTOR_COUNT__      000000 REA    __DESTRUCTOR_TABLE__      000D7D RLA    
+__EXEHDR__                000001 REA    __HEADER_LAST__           00080D RLA    
+__HIMEM__                 00D000 REA    __LOADADDR__              000001 REA    
+__MAIN_SIZE__             00C7F3 REA    __MAIN_START__            00080D RLA    
+__ONCE_RUN__              000DCE RLA    __STACKSIZE__             000800 REA    
+__STARTUP__               000001 REA    _main                     000936 RLA    
+callmain                  000D1D RLA    donelib                   000D34 RLA    
+initlib                   000DCE RLA    ptr1                      00000A RLZ    
+pushax                    000D44 RLA    sp                        000002 RLZ    
+tmp1                      000012 RLZ    zerobss                   000D5A RLA    
+
+
+
+Exports list by value:
+----------------------
+__BSS_SIZE__              000000 REA    __CONSTRUCTOR_COUNT__     000000 REA    
+__DESTRUCTOR_COUNT__      000000 REA    __EXEHDR__                000001 REA    
+__LOADADDR__              000001 REA    __STARTUP__               000001 REA    
+sp                        000002 RLZ    ptr1                      00000A RLZ    
+tmp1                      000012 RLZ    ST                        000090 RLZ    
+__STACKSIZE__             000800 REA    __HEADER_LAST__           00080D RLA    
+__MAIN_START__            00080D RLA    _main                     000936 RLA    
+callmain                  000D1D RLA    donelib                   000D34 RLA    
+pushax                    000D44 RLA    zerobss                   000D5A RLA    
+__DESTRUCTOR_TABLE__      000D7D RLA    __BSS_RUN__               000DCE RLA    
+__ONCE_RUN__              000DCE RLA    initlib                   000DCE RLA    
+__CONSTRUCTOR_TABLE__     000DF4 RLA    __MAIN_SIZE__             00C7F3 REA    
+__HIMEM__                 00D000 REA    BSOUT                     00FFD2 RLA    
+
+
+
+Imports list:
+-------------
+BSOUT (kernal.o):
+    crt0.o                    c64/crt0.s:10
+ST (status.o):
+    crt0.o                    c64/crt0.s:13
+__BSS_RUN__ ([linker generated]):
+    zerobss.o                 common/zerobss.s:8
+__BSS_SIZE__ ([linker generated]):
+    zerobss.o                 common/zerobss.s:8
+__CONSTRUCTOR_COUNT__ ([linker generated]):
+    condes.o                  runtime/condes.s:18
+__CONSTRUCTOR_TABLE__ ([linker generated]):
+    condes.o                  runtime/condes.s:18
+__DESTRUCTOR_COUNT__ ([linker generated]):
+    condes.o                  runtime/condes.s:19
+__DESTRUCTOR_TABLE__ ([linker generated]):
+    condes.o                  runtime/condes.s:19
+__EXEHDR__ (exehdr.o):
+    [linker generated]        /root/cc65-master/cfg/c64.cfg:6
+__HEADER_LAST__ ([linker generated]):
+    [linker generated]        /root/cc65-master/cfg/c64.cfg:14
+    [linker generated]        /root/cc65-master/cfg/c64.cfg:14
+__HIMEM__ ([linker generated]):
+    [linker generated]        /root/cc65-master/cfg/c64.cfg:15
+    [linker generated]        /root/cc65-master/cfg/c64.cfg:14
+__LOADADDR__ (loadaddr.o):
+    [linker generated]        /root/cc65-master/cfg/c64.cfg:5
+__MAIN_SIZE__ ([linker generated]):
+    crt0.o                    c64/crt0.s:11
+__MAIN_START__ ([linker generated]):
+    crt0.o                    c64/crt0.s:11
+__ONCE_RUN__ ([linker generated]):
+    [linker generated]        /root/cc65-master/cfg/c64.cfg:15
+    [linker generated]        /root/cc65-master/cfg/c64.cfg:15
+__STACKSIZE__ ([linker generated]):
+    [linker generated]        /root/cc65-master/cfg/c64.cfg:15
+__STARTUP__ (crt0.o):
+    bitmapscroll_slow.o       bitmapscroll_slow.s:6
+_main (bitmapscroll_slow.o):
+    callmain.o                runtime/callmain.s:11
+callmain (callmain.o):
+    crt0.o                    c64/crt0.s:9
+donelib (condes.o):
+    crt0.o                    c64/crt0.s:8
+initlib (condes.o):
+    crt0.o                    c64/crt0.s:8
+ptr1 (zeropage.o):
+    zerobss.o                 common/zerobss.s:9
+pushax (pushax.o):
+    callmain.o                runtime/callmain.s:11
+sp (zeropage.o):
+    pushax.o                  runtime/pushax.s:8
+    crt0.o                    /root/cc65-master/asminc/zeropage.inc:11
+tmp1 (zeropage.o):
+    bitmapscroll_slow.o       /root/cc65-master/asminc/zeropage.inc:13
+zerobss (zerobss.o):
+    crt0.o                    c64/crt0.s:9
+

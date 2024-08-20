@@ -1,0 +1,2120 @@
+ca65 V2.19 - N/A
+Main file   : macross.s
+Current file: macross.s
+
+000000r 1               .autoimport	on              ; imports C library functions
+000000r 1               .forceimport	__STARTUP__ ; imports STARTUP, INIT, ONCE
+000000r 1               .export		_main           ; expose mane to the C library
+000000r 1               .include        "zeropage.inc"
+000000r 2               ;
+000000r 2               ; zeropage.inc
+000000r 2               ;
+000000r 2               ; (C) Copyright 2002-2012, Ullrich von Bassewitz (uz@cc65.org)
+000000r 2               ;
+000000r 2               
+000000r 2               ; Assembler include file that imports the runtime zero page locations used
+000000r 2               ; by the compiler, ready for usage in asm code.
+000000r 2               
+000000r 2               
+000000r 2                       .globalzp       sp, sreg, regsave
+000000r 2                       .globalzp       ptr1, ptr2, ptr3, ptr4
+000000r 2                       .globalzp       tmp1, tmp2, tmp3, tmp4
+000000r 2                       .globalzp       regbank
+000000r 2               
+000000r 2               ; The size of the register bank
+000000r 2               regbanksize     = 6
+000000r 2               
+000000r 2               ; The total amount of zero page space used
+000000r 2               zpspace         = 26
+000000r 2               
+000000r 2               ; The amount of space that needs to be saved by an interrupt handler that
+000000r 2               ; calls C code (does not include the register bank, which is saved by the
+000000r 2               ; generated C code if required).
+000000r 2               zpsavespace     = zpspace - regbanksize
+000000r 2               
+000000r 2               
+000000r 1               .include        "cbm_kernal.inc"
+000000r 2               ;
+000000r 2               ; Olli Savia <ops@iki.fi>
+000000r 2               ; Greg King
+000000r 2               ;
+000000r 2               ; Commodore-compatibles Kernal functions
+000000r 2               ;
+000000r 2               
+000000r 2               .if .def(__CX16__)
+000000r 2                 ; CX16 extended jump table
+000000r 2                 KBDBUF_PEEK                   := $FEBD
+000000r 2                 KBDBUF_GET_MODIFIERS          := $FEC0
+000000r 2                 KBDBUF_PUT                    := $FEC3
+000000r 2                 I2C_READ_BYTE                 := $FEC6
+000000r 2                 I2C_WRITE_BYTE                := $FEC9
+000000r 2                 CX_MONITOR                    := $FECC
+000000r 2                 ENTROPY_GET                   := $FECF
+000000r 2                 CONSOLE_SET_PAGE_MSG          := $FED5
+000000r 2                 CONSOLE_PUT_IMAGE             := $FED8
+000000r 2                 CONSOLE_INIT                  := $FEDB
+000000r 2                 CONSOLE_PUT_CHAR              := $FEDE
+000000r 2                 CONSOLE_GET_CHAR              := $FEE1
+000000r 2                 MEMORY_FILL                   := $FEE4
+000000r 2                 MEMORY_COPY                   := $FEE7
+000000r 2                 MEMORY_CRC                    := $FEEA
+000000r 2                 MEMORY_DECOMPRESS             := $FEED
+000000r 2                 SPRITE_SET_IMAGE              := $FEF0
+000000r 2                 SPRITE_SET_POSITION           := $FEF3
+000000r 2                 FB_INIT                       := $FEF6
+000000r 2                 FB_GET_INFO                   := $FEF9
+000000r 2                 FB_SET_PALETTE                := $FEFC
+000000r 2                 FB_CURSOR_POSITION            := $FEFF
+000000r 2                 FB_CURSOR_NEXT_LINE           := $FF02
+000000r 2                 FB_GET_PIXEL                  := $FF05
+000000r 2                 FB_GET_PIXELS                 := $FF08
+000000r 2                 FB_SET_PIXEL                  := $FF0B
+000000r 2                 FB_SET_PIXELS                 := $FF0E
+000000r 2                 FB_SET_8_PIXELS               := $FF11
+000000r 2                 FB_SET_8_PIXELS_OPAQUE        := $FF14
+000000r 2                 FB_FILL_PIXELS                := $FF17
+000000r 2                 FB_FILTER_PIXELS              := $FF1A
+000000r 2                 FB_MOVE_PIXELS                := $FF1D
+000000r 2                 GRAPH_INIT                    := $FF20
+000000r 2                 GRAPH_CLEAR                   := $FF23
+000000r 2                 GRAPH_SET_WINDOW              := $FF26
+000000r 2                 GRAPH_SET_COLORS              := $FF29
+000000r 2                 GRAPH_DRAW_LINE               := $FF2C
+000000r 2                 GRAPH_DRAW_RECT               := $FF2F
+000000r 2                 GRAPH_MOVE_RECT               := $FF32
+000000r 2                 GRAPH_DRAW_OVAL               := $FF35
+000000r 2                 GRAPH_DRAW_IMAGE              := $FF38
+000000r 2                 GRAPH_SET_FONT                := $FF3B
+000000r 2                 GRAPH_GET_CHAR_SIZE           := $FF3E
+000000r 2                 GRAPH_PUT_CHAR                := $FF41
+000000r 2                 MULTI_ACPTR                   := $FF44
+000000r 2                 RESTORE_BASIC                 := $FF47
+000000r 2                 CLOCK_SET_DATE_TIME           := $FF4D
+000000r 2                 CLOCK_GET_DATE_TIME           := $FF50
+000000r 2                 JOYSTICK_SCAN                 := $FF53
+000000r 2                 JOYSTICK_GET                  := $FF56
+000000r 2                 SCREEN_MODE                   := $FF5F
+000000r 2                 SCREEN_SET_CHARSET            := $FF62
+000000r 2                 MOUSE_CONFIG                  := $FF68
+000000r 2                 MOUSE_GET                     := $FF6B
+000000r 2               .endif
+000000r 2               
+000000r 2               .if .def(__C128__)
+000000r 2                 ; C128 extended jump table
+000000r 2                 C64MODE      := $FF4D
+000000r 2                 SWAPPER      := $FF5F
+000000r 2                 SETBNK       := $FF68
+000000r 2               .endif
+000000r 2               
+000000r 2               .if .def(__C128__) || .def(__CX16__)
+000000r 2                 ; Extended jump table
+000000r 2                 CLSALL       := $FF4A
+000000r 2                 LKUPLA       := $FF59
+000000r 2                 LKUPSA       := $FF5C
+000000r 2                 PFKEY        := $FF65
+000000r 2                 JSRFAR       := $FF6E
+000000r 2                 INDFET       := $FF74
+000000r 2                 INDSTA       := $FF77
+000000r 2                 INDCMP       := $FF7A
+000000r 2                 PRIMM        := $FF7D
+000000r 2               .endif
+000000r 2               
+000000r 2               .if .def(__C64__) || .def(__C128__) || .def(__C16__) || .def(__CX16__)
+000000r 2                 CINT         := $FF81
+000000r 2                 IOINIT       := $FF84
+000000r 2                 RAMTAS       := $FF87
+000000r 2               .elseif .def(__VIC20__)
+000000r 2                 CINT         := $E518         ; No entries are in the Kernal jump table of the VIC-20 for these three (3) functions.
+000000r 2                 IOINIT       := $FDF9         ; The entries for these functions have been set to point directly to the functions
+000000r 2                 RAMTAS       := $FD8D         ; in the Kernal, to maintain compatibility with the other Commodore platforms.
+000000r 2               .elseif .def(__CBM510__) || .def(__CBM610__)
+000000r 2                 IOINIT       := $FF7B
+000000r 2                 CINT         := $FF7E
+000000r 2               .endif
+000000r 2               
+000000r 2               .if .def(__VIC20__) || .def(__C64__) || .def(__C128__) || .def(__C16__) || .def(__CX16__)
+000000r 2                 RESTOR       := $FF8A
+000000r 2                 VECTOR       := $FF8D
+000000r 2               .elseif .def(__CBM510__) || .def(__CBM610__)
+000000r 2                 VECTOR       := $FF84
+000000r 2                 RESTOR       := $FF87
+000000r 2               .endif
+000000r 2               
+000000r 2               .if .def(__CBM510__) || .def(__CBM610__) || .def(__VIC20__) || .def(__C64__) || .def(__C128__) || .def(__C16__) || .def(__CX16__)
+000000r 2                 SETMSG       := $FF90
+000000r 2                 SECOND       := $FF93
+000000r 2                 TKSA         := $FF96
+000000r 2                 MEMTOP       := $FF99
+000000r 2                 MEMBOT       := $FF9C
+000000r 2                 SCNKEY       := $FF9F
+000000r 2                 SETTMO       := $FFA2
+000000r 2                 ACPTR        := $FFA5
+000000r 2                 CIOUT        := $FFA8
+000000r 2                 UNTLK        := $FFAB
+000000r 2                 UNLSN        := $FFAE
+000000r 2                 LISTEN       := $FFB1
+000000r 2                 TALK         := $FFB4
+000000r 2                 READST       := $FFB7
+000000r 2                 SETLFS       := $FFBA
+000000r 2                 SETNAM       := $FFBD
+000000r 2                 OPEN         := $FFC0
+000000r 2                 CLOSE        := $FFC3
+000000r 2               .endif
+000000r 2               
+000000r 2               ; Available on all platforms including PET
+000000r 2               CHKIN          := $FFC6
+000000r 2               CKOUT          := $FFC9
+000000r 2               CHKOUT         := $FFC9
+000000r 2               CLRCH          := $FFCC
+000000r 2               CLRCHN         := $FFCC
+000000r 2               BASIN          := $FFCF
+000000r 2               CHRIN          := $FFCF
+000000r 2               BSOUT          := $FFD2
+000000r 2               CHROUT         := $FFD2
+000000r 2               
+000000r 2               .if .def(__CBM510__) || .def(__CBM610__) || .def(__VIC20__) || .def(__C64__) || .def(__C128__) || .def(__C16__) || .def(__CX16__)
+000000r 2                 LOAD         := $FFD5
+000000r 2                 SAVE         := $FFD8
+000000r 2                 SETTIM       := $FFDB
+000000r 2                 RDTIM        := $FFDE
+000000r 2               .endif
+000000r 2               
+000000r 2               ; Available on all platforms including PET
+000000r 2               STOP           := $FFE1
+000000r 2               GETIN          := $FFE4
+000000r 2               CLALL          := $FFE7
+000000r 2               UDTIM          := $FFEA
+000000r 2               
+000000r 2               .if .def(__CBM510__) || .def(__CBM610__) || .def(__VIC20__) || .def(__C64__) || .def(__C128__) || .def(__C16__) || .def(__CX16__)
+000000r 2                 SCREEN       := $FFED
+000000r 2                 PLOT         := $FFF0
+000000r 2                 IOBASE       := $FFF3
+000000r 2               .endif
+000000r 2               
+000000r 2               ; ---------------------------------------------------------------------------
+000000r 2               ; Kernal routines, direct entries
+000000r 2               ;
+000000r 2               ; Unlike the above, these are not standard functions with entries in the jump
+000000r 2               ; table. They do not exist in all Kernals, and where they do the entry point is
+000000r 2               ; specific to that particular machine and possibly even Kernal version.
+000000r 2               ;
+000000r 2               ; This list is not comprehensive: missing items for particular machines
+000000r 2               ; should be added as needed.
+000000r 2               ;
+000000r 2               ; UPDCRAMPTR: Updates the color RAM pointer to match the screen RAM pointer.
+000000r 2               ;
+000000r 2               
+000000r 2               .if .def(__VIC20__)
+000000r 2                 CLRSCR       := $E55F
+000000r 2                 KBDREAD      := $E5CF
+000000r 2                 UPDCRAMPTR   := $EAB2
+000000r 2               .elseif .def(__C64__)
+000000r 2                 CLRSCR       := $E544
+000000r 2                 KBDREAD      := $E5B4
+000000r 2                 NMIEXIT      := $FEBC
+000000r 2                 UPDCRAMPTR   := $EA24
+000000r 2               .elseif .def(__C128__)
+000000r 2                 CLRSCR       := $C142
+000000r 2                 KBDREAD      := $C006
+000000r 2                 NMIEXIT      := $FF33
+000000r 2                 NEWLINE      := $C363
+000000r 2                 PRINT        := $C322
+000000r 2                 CURS_SET     := $CD57
+000000r 2                 CURS_ON      := $CD6F
+000000r 2                 CURS_OFF     := $CD9F
+000000r 2               .elseif .def(__C16__)
+000000r 2                 CLRSCR       := $D88B
+000000r 2                 KBDREAD      := $D8C1
+000000r 2               .endif
+000000r 2               
+000000r 1               
+000000r 1               .segment "DATA"
+000000r 1               
+000000r 1               
+000000r 1               ; from kernal source
+000000r 1               cia1	=$dc00                  ;device1 6526 (page1 irq)
+000000r 1               d1pra	=cia1+0
+000000r 1               colm	=d1pra                  ;keyboard matrix
+000000r 1               d1prb	=cia1+1
+000000r 1               rows	=d1prb                  ;keyboard matrix
+000000r 1               d1ddra	=cia1+2
+000000r 1               d1ddrb	=cia1+3
+000000r 1               d1t1l	=cia1+4
+000000r 1               d1t1h	=cia1+5
+000000r 1               d1t2l	=cia1+6
+000000r 1               d1t2h	=cia1+7
+000000r 1               d1tod1	=cia1+8
+000000r 1               d1tods	=cia1+9
+000000r 1               d1todm	=cia1+10
+000000r 1               d1todh	=cia1+11
+000000r 1               d1sdr	=cia1+12
+000000r 1               d1icr	=cia1+13
+000000r 1               d1cra	=cia1+14
+000000r 1               d1crb	=cia1+15
+000000r 1               
+000000r 1               cia2	=$dd00                  ;device2 6526 (page2 nmi)
+000000r 1               d2pra	=cia2+0
+000000r 1               d2prb	=cia2+1
+000000r 1               d2ddra	=cia2+2
+000000r 1               d2ddrb	=cia2+3
+000000r 1               d2t1l	=cia2+4
+000000r 1               d2t1h	=cia2+5
+000000r 1               d2t2l	=cia2+6
+000000r 1               d2t2h	=cia2+7
+000000r 1               d2tod1	=cia2+8
+000000r 1               d2tods	=cia2+9
+000000r 1               d2todm	=cia2+10
+000000r 1               d2todh	=cia2+11
+000000r 1               d2sdr	=cia2+12
+000000r 1               d2icr	=cia2+13
+000000r 1               d2cra	=cia2+14
+000000r 1               d2crb	=cia2+15
+000000r 1               
+000000r 1               ; zero page aliases
+000000r 1               byteaddr := tmp1		; 2 bytes
+000000r 1  xx           temp1: .res 1
+000001r 1  xx           temp2: .res 1
+000002r 1  xx           temp3: .res 1
+000003r 1  xx           command_offset: .res 1
+000004r 1  xx           sector_offset: .res 1
+000005r 1  xx           current_command: .res 1
+000006r 1               
+000006r 1               ; times
+000006r 1  xx xx        profile1: .res 2
+000008r 1  xx xx        profile2: .res 2
+00000Ar 1  xx xx        profile3: .res 2
+00000Cr 1  xx xx        profile4: .res 2
+00000Er 1               
+00000Er 1               COMMAND_SIZE = 12
+00000Er 1               
+00000Er 1               ; sector buffer for testing
+00000Er 1               SECTOR_DST = $c000
+00000Er 1               
+00000Er 1               .include "scrollvars.inc"
+00000Er 2               
+00000Er 2  xx xx        temp16:       .res    2       ; 2 bytes
+000010r 2  xx xx        bmp_dst:      .res    2       ; the current bitmap
+000012r 2  xx xx        bmp_src:      .res    2       ; the oppposite bitmap for scroll copy
+000014r 2  xx xx        color_ptr:    .res    2       ; the current color map
+000016r 2  xx xx        color_ptr2:   .res    2       ; the oppposite color map for scroll copy
+000018r 2  xx           step:         .res    1       ; count the number of loops
+000019r 2  xx           current_page: .res    1
+00001Ar 2               
+00001Ar 1               
+00001Ar 1               
+00001Ar 1               .segment	"CODE"
+000000r 1               
+000000r 1               .include "common.inc"
+000000r 2               
+000000r 2               ; printer device number
+000000r 2               PRINTER = 4
+000000r 2               
+000000r 2               ; macros
+000000r 2               .macro SET_LITERAL8 address, value
+000000r 2                   lda #value
+000000r 2                   sta address
+000000r 2               .endmacro
+000000r 2               
+000000r 2               .macro SET_LITERAL16 address, value
+000000r 2                   lda #<value
+000000r 2                   sta address
+000000r 2                   lda #>value
+000000r 2                   sta address + 1
+000000r 2               .endmacro
+000000r 2               
+000000r 2               .macro COPY_REG16 dst, src
+000000r 2                   lda src
+000000r 2                   sta dst
+000000r 2                   lda src + 1
+000000r 2                   sta dst + 1
+000000r 2               .endmacro
+000000r 2               
+000000r 2               ; dst = a + b
+000000r 2               .macro ADD_REG16 a_hi, a_lo, b_hi, b_lo, dst_hi, dst_lo
+000000r 2                   clc
+000000r 2                   lda a_lo
+000000r 2                   adc b_lo
+000000r 2                   sta dst_lo
+000000r 2                   lda a_hi
+000000r 2                   adc b_hi
+000000r 2                   sta dst_hi
+000000r 2               .endmacro
+000000r 2               
+000000r 2               ; dst = literal + src
+000000r 2               .macro ADD_LITERAL16 dst, src, literal
+000000r 2                   clc
+000000r 2                   lda #<literal ; low
+000000r 2                   adc src
+000000r 2                   sta dst
+000000r 2                   lda #>literal ; high
+000000r 2                   adc src + 1
+000000r 2                   sta dst + 1
+000000r 2               .endmacro
+000000r 2               
+000000r 2               ; dst = src - literal
+000000r 2               .macro SUB_LITERAL16 dst, src, literal
+000000r 2                   sec
+000000r 2                   lda src
+000000r 2                   sbc #<literal ; low
+000000r 2                   sta dst
+000000r 2                   lda src + 1
+000000r 2                   sbc #>literal ; high
+000000r 2                   sta dst + 1
+000000r 2               .endmacro
+000000r 2               
+000000r 2               ; branch if address content >= literal
+000000r 2               .macro BRANCH_GREATEREQUAL16 address, literal, where
+000000r 2                   sec
+000000r 2                   lda address
+000000r 2                   sbc #<literal ; low
+000000r 2                   lda address + 1
+000000r 2                   sbc #>literal ; high
+000000r 2                   bcs where
+000000r 2               .endmacro
+000000r 2               
+000000r 2               ; branch if address content < literal
+000000r 2               .macro BRANCH_LESS16 address, literal, where
+000000r 2                   sec
+000000r 2                   lda address
+000000r 2                   sbc #<literal ; low
+000000r 2                   lda address + 1
+000000r 2                   sbc #>literal ; high
+000000r 2                   bcc where
+000000r 2               .endmacro
+000000r 2               
+000000r 2               .macro PRINT_TEXT string
+000000r 2                   SET_LITERAL16 printmod + 1, string ; self modifying code
+000000r 2                   jsr print
+000000r 2               .endmacro
+000000r 2               
+000000r 2               .macro PRINT_HEX16 address
+000000r 2                   ldy address + 1
+000000r 2                   jsr print_hex8
+000000r 2                   ldy address
+000000r 2                   jsr print_hex8
+000000r 2               .endmacro
+000000r 2               
+000000r 2               .macro PRINT_HEX8 address
+000000r 2                   ldy address
+000000r 2                   jsr print_hex8
+000000r 2                   lda #' '
+000000r 2                   jsr CIOUT
+000000r 2               .endmacro
+000000r 2               
+000000r 2               .macro INIT_DEBUG
+000000r 2               ; open the printer page 338
+000000r 2                   lda #7 ; logical number
+000000r 2                   ldx #PRINTER ; device number
+000000r 2                   ldy #7 ; secondary address
+000000r 2                   jsr SETLFS
+000000r 2               
+000000r 2                   jsr OPEN
+000000r 2               
+000000r 2               ; direct CHROUT to the printer
+000000r 2                   ldx #PRINTER ; logical number
+000000r 2                   jsr CHKOUT
+000000r 2               .endmacro
+000000r 2               
+000000r 2               .macro SELECT_PRINTER
+000000r 2               ; direct CIOUT to the printer
+000000r 2                   lda #PRINTER
+000000r 2                   jsr LISTEN
+000000r 2               .endmacro
+000000r 2               
+000000r 2               ; setup timer for profiling
+000000r 2               .macro INIT_PROFILER
+000000r 2                   lda #$ff   ; reset CIA 2 timer A
+000000r 2                   sta d2t1h
+000000r 2                   sta d2t2l  ; reset CIA 2 timer B
+000000r 2                   lda #$11
+000000r 2                   sta d2cra  ; start timer A
+000000r 2                   lda #$51
+000000r 2                   sta d2crb  ; run timer B off of timer A
+000000r 2               .endmacro
+000000r 2               
+000000r 2               .macro GET_TIME dst
+000000r 2                   lda #$ff
+000000r 2                   sbc d2t1h ; get CIA 2 timer A
+000000r 2                   sta dst
+000000r 2                   lda #$ff
+000000r 2                   sbc d2t2l ; get CIA 2 timer B
+000000r 2                   sta dst + 1
+000000r 2                   lda #$ff ; reset the clock
+000000r 2                   sta d2t1h
+000000r 2                   sta d2t2l
+000000r 2                   lda #$11
+000000r 2                   sta d2cra
+000000r 2                   lda #$51
+000000r 2                   sta d2crb
+000000r 2               .endmacro
+000000r 2               
+000000r 2               print:
+000000r 2  A2 00            ldx #$00          ; initialize X register for indexing
+000002r 2               printmod:
+000002r 2  BD FF FF         lda $ffff,x       ; load the character from the message
+000005r 2  F0 07            beq print2        ; if character is zero, we are done
+000007r 2  20 rr rr             jsr CIOUT     ; call CIOUT routine to send the character to the serial port
+00000Ar 2  E8                   inx           ; increment X register
+00000Br 2  4C rr rr             jmp printmod  ; repeat the loop
+00000Er 2               print2:
+00000Er 2  60               rts
+00000Fr 2               
+00000Fr 2               ; print the value of Y.  Overwrites A, X
+00000Fr 2               hex_table:
+00000Fr 2  30 31 32 33      .byte "0123456789abcdef"
+000013r 2  34 35 36 37  
+000017r 2  38 39 61 62  
+00001Fr 2               print_hex8:
+00001Fr 2  98               tya
+000020r 2  29 F0            and #$f0
+000022r 2  18               clc
+000023r 2  6A               ror A
+000024r 2  6A               ror A
+000025r 2  6A               ror A
+000026r 2  6A               ror A
+000027r 2  AA               tax
+000028r 2  BD rr rr         lda hex_table,x
+00002Br 2  20 rr rr         jsr CIOUT
+00002Er 2  98               tya
+00002Fr 2  29 0F            and #$0f
+000031r 2  AA               tax
+000032r 2  BD rr rr         lda hex_table,x
+000035r 2  20 rr rr         jsr CIOUT
+000038r 2  60               rts
+000039r 2               
+000039r 2               
+000039r 1               
+000039r 1               ; secondary & logical addresses for the world drive
+000039r 1               CONTROL = 15
+000039r 1               WORLD_DRIVE = 9
+000039r 1               DATA = 2
+000039r 1               
+000039r 1               .macro SET_IO_STATE func
+000039r 1                   SET_LITERAL16 io_state + 1, func
+000039r 1               .endmacro
+000039r 1               
+000039r 1               .macro SELECT_CONTROL
+000039r 1                   lda #WORLD_DRIVE ; write to the command channel
+000039r 1                   jsr LISTEN
+000039r 1                   lda #(CONTROL | $60) ; secondary address needs to be ored with 0x60
+000039r 1                   jsr SECOND
+000039r 1               .endmacro
+000039r 1               
+000039r 1               .macro SELECT_DATA
+000039r 1                   lda #WORLD_DRIVE ; read from the data channel
+000039r 1                   jsr TALK
+000039r 1                   lda #(DATA | $60) ; secondary address needs to be ored with 0x60
+000039r 1                   jsr TKSA
+000039r 1               .endmacro
+000039r 1               
+000039r 1               
+000039r 1               
+000039r 1               welcome:
+000039r 1  77 65 6C 63      .byte "welcome to macross64"
+00003Dr 1  6F 6D 65 20  
+000041r 1  74 6F 20 6D  
+00004Dr 1  0A 00            .byte $0a, $00    ; null terminator for the message
+00004Fr 1               
+00004Fr 1               sending_command:
+00004Fr 1  73 65 6E 64      .byte "sending_command"
+000053r 1  69 6E 67 5F  
+000057r 1  63 6F 6D 6D  
+00005Er 1  0A 00            .byte $0a, $00    ; null terminator for the message
+000060r 1               reading1:
+000060r 1  72 65 61 64      .byte "reading1"
+000064r 1  69 6E 67 31  
+000068r 1  0A 00            .byte $0a, $00    ; null terminator for the message
+00006Ar 1               
+00006Ar 1               reading2:
+00006Ar 1  72 65 61 64      .byte "reading2"
+00006Er 1  69 6E 67 32  
+000072r 1  0A 00            .byte $0a, $00    ; null terminator for the message
+000074r 1               
+000074r 1               reading3:
+000074r 1  72 65 61 64      .byte "reading3"
+000078r 1  69 6E 67 33  
+00007Cr 1  0A 00            .byte $0a, $00    ; null terminator for the message
+00007Er 1               time1:
+00007Er 1  74 69 6D 65      .byte "time1: "
+000082r 1  31 3A 20     
+000085r 1  00               .byte $00    ; null terminator for the message
+000086r 1               time2:
+000086r 1  74 69 6D 65      .byte "time2: "
+00008Ar 1  32 3A 20     
+00008Dr 1  00               .byte $00    ; null terminator for the message
+00008Er 1               time3:
+00008Er 1  74 69 6D 65      .byte "time3: "
+000092r 1  33 3A 20     
+000095r 1  00               .byte $00    ; null terminator for the message
+000096r 1               printing:
+000096r 1  70 72 69 6E      .byte "printing"
+00009Ar 1  74 69 6E 67  
+00009Er 1  0A 00            .byte $0a, $00    ; null terminator for the message
+0000A0r 1               
+0000A0r 1               data_name:
+0000A0r 1  23               .byte "#"
+0000A1r 1               
+0000A1r 1               load_command1:
+0000A1r 1  75 31 20 32      .byte "u1 2 0  1  0"
+0000A5r 1  20 30 20 20  
+0000A9r 1  31 20 20 30  
+0000ADr 1               load_command2:
+0000ADr 1  75 31 20 32      .byte "u1 2 0  1  1"
+0000B1r 1  20 30 20 20  
+0000B5r 1  31 20 20 31  
+0000B9r 1               load_command3:
+0000B9r 1  75 31 20 32      .byte "u1 2 0  1  2"
+0000BDr 1  20 30 20 20  
+0000C1r 1  31 20 20 32  
+0000C5r 1               load_command4:
+0000C5r 1  75 31 20 32      .byte "u1 2 0  1  3"
+0000C9r 1  20 30 20 20  
+0000CDr 1  31 20 20 33  
+0000D1r 1               
+0000D1r 1               
+0000D1r 1               
+0000D1r 1               
+0000D1r 1               .proc	_main: near
+0000D1r 1               
+0000D1r 1  A9 07 A2 04      INIT_DEBUG
+0000D5r 1  A0 07 20 rr  
+0000D9r 1  rr 20 rr rr  
+0000E2r 1               
+0000E2r 1               ; print something
+0000E2r 1  A9 rr 8D rr      PRINT_TEXT welcome
+0000E6r 1  rr A9 rr 8D  
+0000EAr 1  rr rr 20 rr  
+0000EFr 1               
+0000EFr 1               ; open data channel
+0000EFr 1  A9 02            lda #DATA ; logical number
+0000F1r 1  A2 09            ldx #WORLD_DRIVE    ; drive number
+0000F3r 1  A0 02            ldy #DATA ; secondary address
+0000F5r 1  20 rr rr         jsr SETLFS
+0000F8r 1  A9 01            lda #1
+0000FAr 1  A2 rr            ldx #<data_name
+0000FCr 1  A0 rr            ldy #>data_name
+0000FEr 1  20 rr rr         jsr SETNAM
+000101r 1  20 rr rr         jsr OPEN
+000104r 1               
+000104r 1               ; open control channel
+000104r 1  A9 0F            lda #CONTROL ; logical number
+000106r 1  A2 09            ldx #WORLD_DRIVE       ; drive number
+000108r 1  A0 0F            ldy #CONTROL ; secondary address
+00010Ar 1  20 rr rr         jsr SETLFS
+00010Dr 1  A9 00            lda #0
+00010Fr 1  A2 00            ldx #0
+000111r 1  A0 00            ldy #0
+000113r 1  20 rr rr         jsr SETNAM
+000116r 1  20 rr rr         jsr OPEN
+000119r 1               
+000119r 1  20 rr rr         jsr init_graphics
+00011Cr 1               
+00011Cr 1               ; self modifying code
+00011Cr 1  A9 rr 8D rr      SET_IO_STATE io_command
+000120r 1  rr A9 rr 8D  
+000124r 1  rr rr        
+000126r 1  A9 00            lda #00
+000128r 1  8D rr rr         sta current_command
+00012Br 1               
+00012Br 1               loop:
+00012Br 1  20 rr rr         jsr scroll_left
+00012Er 1  20 rr rr         jsr flip_page
+000131r 1  20 rr rr         jsr update_pattern
+000134r 1               ;    jsr io_state
+000134r 1               
+000134r 1  4C rr rr         jmp loop
+000137r 1               
+000137r 1               clkhi:	;set clock line high (inverted)
+000137r 1  AD 00 DD     	lda d2pra
+00013Ar 1  29 EF        	and #$ff-$10
+00013Cr 1  8D 00 DD     	sta d2pra
+00013Fr 1  60           	rts
+000140r 1               
+000140r 1               clklo:	;set clock line low  (inverted)
+000140r 1  AD 00 DD     	lda d2pra
+000143r 1  09 10        	ora #$10
+000145r 1  8D 00 DD     	sta d2pra
+000148r 1  60           	rts
+000149r 1               
+000149r 1               datahi:	;set data line high (inverted)
+000149r 1  AD 00 DD     	lda d2pra
+00014Cr 1  29 DF        	and #$ff-$20
+00014Er 1  8D 00 DD     	sta d2pra
+000151r 1  60           	rts
+000152r 1               
+000152r 1  AD 00 DD     debpia:	lda d2pra       ;debounce the pia
+000155r 1  CD 00 DD     	cmp d2pra
+000158r 1  D0 F8        	bne debpia
+00015Ar 1  0A           	asl a           ;shift the data bit into the carry...
+00015Br 1  60           	rts             ;...and the clock into neg flag
+00015Cr 1               
+00015Cr 1               w1ms:	;delay 1ms using loop
+00015Cr 1  8A           	txa             ;save .x
+00015Dr 1  A2 B8        	ldx #200-16     ;1000us-(1000/500*8=#40us holds)
+00015Fr 1  CA           w1ms1:	dex             ;5us loop
+000160r 1  D0 FD        	bne w1ms1
+000162r 1  AA           	tax             ;restore .x
+000163r 1  60           	rts
+000164r 1               
+000164r 1               io_state:
+000164r 1  4C rr rr         jmp io_idle
+000167r 1               
+000167r 1               
+000167r 1               io_idle:
+000167r 1  60               rts
+000168r 1               
+000168r 1               io_command:
+000168r 1  A9 rr 8D rr      PRINT_TEXT sending_command
+00016Cr 1  rr A9 rr 8D  
+000170r 1  rr rr 20 rr  
+000175r 1               
+000175r 1               
+000175r 1               
+000175r 1  A9 09 20 rr      SELECT_CONTROL
+000179r 1  rr A9 6F 20  
+00017Dr 1  rr rr        
+00017Fr 1  A9 00 8D rr      SET_LITERAL8 command_offset, 0
+000183r 1  rr           
+000184r 1  A9 rr 8D rr      SET_IO_STATE io_command2
+000188r 1  rr A9 rr 8D  
+00018Cr 1  rr rr        
+00018Er 1               
+00018Er 1               ; set the command
+00018Er 1  AD rr rr         lda current_command
+000191r 1  C9 00            cmp #0
+000193r 1  D0 0E            bne set_command2
+000195r 1  A9 rr 8D rr          SET_LITERAL16 io_command_mod + 1, load_command1
+000199r 1  rr A9 rr 8D  
+00019Dr 1  rr rr        
+00019Fr 1  EE rr rr             inc current_command
+0001A2r 1  60                   rts
+0001A3r 1               set_command2:
+0001A3r 1  C9 01            cmp #1
+0001A5r 1  D0 0E            bne set_command3
+0001A7r 1  A9 rr 8D rr          SET_LITERAL16 io_command_mod + 1, load_command2
+0001ABr 1  rr A9 rr 8D  
+0001AFr 1  rr rr        
+0001B1r 1  EE rr rr             inc current_command
+0001B4r 1  60                   rts
+0001B5r 1               set_command3:
+0001B5r 1  C9 02            cmp #2
+0001B7r 1  D0 0E            bne set_command4
+0001B9r 1  A9 rr 8D rr          SET_LITERAL16 io_command_mod + 1, load_command3
+0001BDr 1  rr A9 rr 8D  
+0001C1r 1  rr rr        
+0001C3r 1  EE rr rr             inc current_command
+0001C6r 1  60                   rts
+0001C7r 1               set_command4:
+0001C7r 1  A9 rr 8D rr      SET_LITERAL16 io_command_mod + 1, load_command4
+0001CBr 1  rr A9 rr 8D  
+0001CFr 1  rr rr        
+0001D1r 1  A9 00 8D rr      SET_LITERAL8 current_command, 0
+0001D5r 1  rr           
+0001D6r 1  60               rts
+0001D7r 1               
+0001D7r 1               io_command2:
+0001D7r 1  AE rr rr         ldx command_offset
+0001DAr 1               io_command_mod:
+0001DAr 1  BD FF FF         lda $ffff,x
+0001DDr 1  20 rr rr         jsr CIOUT
+0001E0r 1  EE rr rr         inc command_offset
+0001E3r 1  AD rr rr         lda command_offset
+0001E6r 1  C9 0C            cmp #COMMAND_SIZE
+0001E8r 1  F0 01            beq io_command3
+0001EAr 1  60                   rts
+0001EBr 1               io_command3:
+0001EBr 1  A9 rr 8D rr      SET_IO_STATE io_command_done
+0001EFr 1  rr A9 rr 8D  
+0001F3r 1  rr rr        
+0001F5r 1  60               rts
+0001F6r 1               
+0001F6r 1               
+0001F6r 1               io_command_done:
+0001F6r 1  20 rr rr         jsr UNLSN ; execute the command
+0001F9r 1               
+0001F9r 1  A9 rr 8D rr      PRINT_TEXT reading1
+0001FDr 1  rr A9 rr 8D  
+000201r 1  rr rr 20 rr  
+000206r 1               ;    lda #00 ; reset jiffy clock
+000206r 1               ;    sta $A2
+000206r 1               ;    SET_IO_STATE io_delay
+000206r 1               ;    SET_IO_STATE io_start_read
+000206r 1               
+000206r 1  A9 FF 8D 05      INIT_PROFILER
+00020Ar 1  DD 8D 06 DD  
+00020Er 1  A9 11 8D 0E  
+000218r 1               
+000218r 1               ; begin the TALK command
+000218r 1  AD 00 DD         lda d2pra       ;assert attention
+00021Br 1  09 08        	ora #$08
+00021Dr 1  8D 00 DD     	sta d2pra
+000220r 1               
+000220r 1  20 rr rr         jsr clklo       ;set clock line low
+000223r 1  20 rr rr     	jsr datahi      ;make sure data is released
+000226r 1  20 rr rr     	jsr w1ms        ;delay 1 ms
+000229r 1  20 rr rr     	jsr clkhi       ;clock line high
+00022Cr 1  A9 rr 8D rr      SET_IO_STATE io_poll_talk
+000230r 1  rr A9 rr 8D  
+000234r 1  rr rr        
+000236r 1  60               rts
+000237r 1               
+000237r 1               
+000237r 1               ; delay for sector read
+000237r 1               ;io_delay:
+000237r 1               ;    lda $A2 ; test for clock > delay time
+000237r 1               ;    sbc #15
+000237r 1               ;    bpl io_delay2
+000237r 1               ;        rts
+000237r 1               ;io_delay2:
+000237r 1               ;    SET_IO_STATE io_start_read
+000237r 1               ;    rts
+000237r 1               
+000237r 1               ; wait for read to finish.  Have to poll this fast enough to catch it
+000237r 1               io_poll_talk:
+000237r 1  20 rr rr         jsr debpia      ;wait for data to go high.  This is the long delay
+00023Ar 1  B0 01            bcs io_poll_talk2
+00023Cr 1  60                   rts
+00023Dr 1               
+00023Dr 1               io_poll_talk2:
+00023Dr 1               ;    jsr debpia      ;wait for data to go low
+00023Dr 1               ;	bcs io_poll_talk2
+00023Dr 1               
+00023Dr 1               
+00023Dr 1  AD 00 DD     	lda d2pra
+000240r 1  29 F7        	and #$ff-$08
+000242r 1  8D 00 DD     	sta d2pra       ;release attention
+000245r 1  20 rr rr     	jsr w1ms    ;delay 1 ms to get the damn thing to work
+000248r 1               
+000248r 1  A9 FF ED 05      GET_TIME profile1 ; time spent waiting for TALK
+00024Cr 1  DD 8D rr rr  
+000250r 1  A9 FF ED 06  
+00026Ar 1  A9 rr 8D rr      SET_IO_STATE io_start_read
+00026Er 1  rr A9 rr 8D  
+000272r 1  rr rr        
+000274r 1  60               rts
+000275r 1               
+000275r 1               
+000275r 1               io_start_read:
+000275r 1  A9 00 8D rr      SET_LITERAL8 sector_offset, 0
+000279r 1  rr           
+00027Ar 1               
+00027Ar 1               
+00027Ar 1               ;    lda #'x'
+00027Ar 1               ;    jsr CIOUT
+00027Ar 1               ;    lda #$0a
+00027Ar 1               ;    jsr CIOUT
+00027Ar 1               
+00027Ar 1  A9 09 20 rr      SELECT_DATA
+00027Er 1  rr A9 62 20  
+000282r 1  rr rr        
+000284r 1               
+000284r 1  A9 FF ED 05      GET_TIME profile2 ; time spent waiting for TALK
+000288r 1  DD 8D rr rr  
+00028Cr 1  A9 FF ED 06  
+0002A6r 1               
+0002A6r 1               ;    SET_IO_STATE io_poll
+0002A6r 1  A9 rr 8D rr      SET_IO_STATE io_read
+0002AAr 1  rr A9 rr 8D  
+0002AEr 1  rr rr        
+0002B0r 1  60               rts
+0002B1r 1               
+0002B1r 1               ;io_poll:
+0002B1r 1               ; release clock line
+0002B1r 1               ;	lda d2pra
+0002B1r 1               ;	and #$ff-$10 ; bit 4 (clock out) to 0
+0002B1r 1               ;	sta d2pra
+0002B1r 1               ;    SET_IO_STATE io_poll2 ; set for later
+0002B1r 1               
+0002B1r 1               ;io_poll2:
+0002B1r 1               ;    lda d2pra ; load clock
+0002B1r 1               ;    cmp d2pra ; debounce
+0002B1r 1               ;    bne io_poll2
+0002B1r 1               ;    asl a ; move data (bit 7) into carry & clock (bit 6) into N flag (sign bit)
+0002B1r 1               ;    bmi io_read ; clock high if ready (N == 1)
+0002B1r 1               ;        rts
+0002B1r 1               
+0002B1r 1               
+0002B1r 1               io_read:
+0002B1r 1  AD rr rr         lda sector_offset
+0002B4r 1  D0 22            bne io_read_2nd
+0002B6r 1  A9 FF ED 05          GET_TIME profile3 ; time spent waiting for 1st byte
+0002BAr 1  DD 8D rr rr  
+0002BEr 1  A9 FF ED 06  
+0002D8r 1               io_read_2nd:
+0002D8r 1               
+0002D8r 1  20 rr rr         jsr ACPTR ; read a character from the drive
+0002DBr 1  AE rr rr         ldx sector_offset
+0002DEr 1  9D 00 C0         sta SECTOR_DST,x
+0002E1r 1  EE rr rr         inc sector_offset
+0002E4r 1  F0 01            beq io_read2
+0002E6r 1               ;        SET_IO_STATE io_poll
+0002E6r 1  60                   rts
+0002E7r 1               io_read2: ; end of sector
+0002E7r 1  A9 rr 8D rr      SET_IO_STATE io_read_done
+0002EBr 1  rr A9 rr 8D  
+0002EFr 1  rr rr        
+0002F1r 1  60               rts
+0002F2r 1               
+0002F2r 1               io_read_done:
+0002F2r 1               ; print profiling data
+0002F2r 1  A9 rr 8D rr      PRINT_TEXT time1
+0002F6r 1  rr A9 rr 8D  
+0002FAr 1  rr rr 20 rr  
+0002FFr 1  AC rr rr 20      PRINT_HEX16 profile1
+000303r 1  rr rr AC rr  
+000307r 1  rr 20 rr rr  
+00030Br 1  A9 20            lda #' '
+00030Dr 1  20 rr rr         jsr CIOUT
+000310r 1  AC rr rr 20      PRINT_HEX16 profile2
+000314r 1  rr rr AC rr  
+000318r 1  rr 20 rr rr  
+00031Cr 1  A9 20            lda #' '
+00031Er 1  20 rr rr         jsr CIOUT
+000321r 1  AC rr rr 20      PRINT_HEX16 profile3
+000325r 1  rr rr AC rr  
+000329r 1  rr 20 rr rr  
+00032Dr 1  A9 0A            lda #$0a
+00032Fr 1  20 rr rr         jsr CIOUT
+000332r 1               
+000332r 1               ; next sector read
+000332r 1  A9 rr 8D rr      SET_IO_STATE io_command
+000336r 1  rr A9 rr 8D  
+00033Ar 1  rr rr        
+00033Cr 1               ;    PRINT_TEXT printing
+00033Cr 1               ;    SET_IO_STATE io_print
+00033Cr 1  60               rts
+00033Dr 1               
+00033Dr 1               io_print:
+00033Dr 1  A9 04 20 rr      SELECT_PRINTER
+000341r 1  rr           
+000342r 1  A9 rr 8D rr      SET_IO_STATE io_print2
+000346r 1  rr A9 rr 8D  
+00034Ar 1  rr rr        
+00034Cr 1  60               rts
+00034Dr 1               
+00034Dr 1               io_print2:
+00034Dr 1  AE rr rr         ldx sector_offset
+000350r 1  BD 00 C0         lda SECTOR_DST,x
+000353r 1  A8               tay
+000354r 1  20 rr rr         jsr print_hex8
+000357r 1  A9 rr 8D rr      SET_IO_STATE io_print3
+00035Br 1  rr A9 rr 8D  
+00035Fr 1  rr rr        
+000361r 1  60               rts
+000362r 1               
+000362r 1               io_print3:
+000362r 1  A9 20            lda #' '
+000364r 1  20 rr rr         jsr CIOUT
+000367r 1  A9 rr 8D rr      SET_IO_STATE io_print2
+00036Br 1  rr A9 rr 8D  
+00036Fr 1  rr rr        
+000371r 1  EE rr rr         inc sector_offset
+000374r 1  F0 01            beq io_print4
+000376r 1  60                   rts
+000377r 1               io_print4:
+000377r 1  A9 rr 8D rr      SET_IO_STATE io_print5
+00037Br 1  rr A9 rr 8D  
+00037Fr 1  rr rr        
+000381r 1  60               rts
+000382r 1               
+000382r 1               io_print5:
+000382r 1  A9 0A            lda #$0a
+000384r 1  20 rr rr         jsr CIOUT
+000387r 1  A9 rr 8D rr      SET_IO_STATE io_print_done
+00038Br 1  rr A9 rr 8D  
+00038Fr 1  rr rr        
+000391r 1  60               rts
+000392r 1               
+000392r 1               io_print_done:
+000392r 1               ;    jsr UNLSN
+000392r 1  A9 rr 8D rr      SET_IO_STATE io_command
+000396r 1  rr A9 rr 8D  
+00039Ar 1  rr rr        
+00039Cr 1  60               rts
+00039Dr 1               
+00039Dr 1               .include "scroll.inc"
+00039Dr 2               
+00039Dr 2               ; starting addresses of bitmaps
+00039Dr 2               BMP0 = $6000
+00039Dr 2               BMP0_COLOR = $5c00
+00039Dr 2               BMP1 = $a000
+00039Dr 2               BMP1_COLOR = $8400
+00039Dr 2               
+00039Dr 2               
+00039Dr 2               pattern1:
+00039Dr 2  55 AA 55 AA      .byte $55, $aa, $55, $aa, $55, $aa, $55, $aa
+0003A1r 2  55 AA 55 AA  
+0003A5r 2               
+0003A5r 2               pattern2:
+0003A5r 2  00 00 00 00      .byte $00, $00, $00, $00, $00, $00, $00, $00
+0003A9r 2  00 00 00 00  
+0003ADr 2               
+0003ADr 2               .include        "bitmapunroll.s"
+0003ADr 3               GRANULARITY = 15
+0003ADr 3               
+0003ADr 3               left_BMP0_to_BMP1_256:
+0003ADr 3  8A               txa
+0003AEr 3  29 0F            and #GRANULARITY
+0003B0r 3  D0 07            bne left_BMP0_to_BMP1_256_continue
+0003B2r 3  8A                   txa
+0003B3r 3  48                   pha
+0003B4r 3  20 rr rr             jsr io_state
+0003B7r 3  68                   pla
+0003B8r 3  AA                   tax
+0003B9r 3               left_BMP0_to_BMP1_256_continue:
+0003B9r 3  BD 08 60         lda BMP0 + 8,x
+0003BCr 3  9D 00 A0         sta BMP1,x
+0003BFr 3  BD 48 61         lda BMP0 + 320 * 1 + 8,x
+0003C2r 3  9D 40 A1         sta BMP1 + 320 * 1,x
+0003C5r 3  BD 88 62         lda BMP0 + 320 * 2 + 8,x
+0003C8r 3  9D 80 A2         sta BMP1 + 320 * 2,x
+0003CBr 3  BD C8 63         lda BMP0 + 320 * 3 + 8,x
+0003CEr 3  9D C0 A3         sta BMP1 + 320 * 3,x
+0003D1r 3  BD 08 65         lda BMP0 + 320 * 4 + 8,x
+0003D4r 3  9D 00 A5         sta BMP1 + 320 * 4,x
+0003D7r 3  BD 48 66         lda BMP0 + 320 * 5 + 8,x
+0003DAr 3  9D 40 A6         sta BMP1 + 320 * 5,x
+0003DDr 3  BD 88 67         lda BMP0 + 320 * 6 + 8,x
+0003E0r 3  9D 80 A7         sta BMP1 + 320 * 6,x
+0003E3r 3  BD C8 68         lda BMP0 + 320 * 7 + 8,x
+0003E6r 3  9D C0 A8         sta BMP1 + 320 * 7,x
+0003E9r 3  BD 08 6A         lda BMP0 + 320 * 8 + 8,x
+0003ECr 3  9D 00 AA         sta BMP1 + 320 * 8,x
+0003EFr 3  BD 48 6B         lda BMP0 + 320 * 9 + 8,x
+0003F2r 3  9D 40 AB         sta BMP1 + 320 * 9,x
+0003F5r 3  BD 88 6C         lda BMP0 + 320 * 10 + 8,x
+0003F8r 3  9D 80 AC         sta BMP1 + 320 * 10,x
+0003FBr 3  BD C8 6D         lda BMP0 + 320 * 11 + 8,x
+0003FEr 3  9D C0 AD         sta BMP1 + 320 * 11,x
+000401r 3  BD 08 6F         lda BMP0 + 320 * 12 + 8,x
+000404r 3  9D 00 AF         sta BMP1 + 320 * 12,x
+000407r 3  BD 48 70         lda BMP0 + 320 * 13 + 8,x
+00040Ar 3  9D 40 B0         sta BMP1 + 320 * 13,x
+00040Dr 3  BD 88 71         lda BMP0 + 320 * 14 + 8,x
+000410r 3  9D 80 B1         sta BMP1 + 320 * 14,x
+000413r 3  BD C8 72         lda BMP0 + 320 * 15 + 8,x
+000416r 3  9D C0 B2         sta BMP1 + 320 * 15,x
+000419r 3  BD 08 74         lda BMP0 + 320 * 16 + 8,x
+00041Cr 3  9D 00 B4         sta BMP1 + 320 * 16,x
+00041Fr 3  BD 48 75         lda BMP0 + 320 * 17 + 8,x
+000422r 3  9D 40 B5         sta BMP1 + 320 * 17,x
+000425r 3  BD 88 76         lda BMP0 + 320 * 18 + 8,x
+000428r 3  9D 80 B6         sta BMP1 + 320 * 18,x
+00042Br 3  BD C8 77         lda BMP0 + 320 * 19 + 8,x
+00042Er 3  9D C0 B7         sta BMP1 + 320 * 19,x
+000431r 3  BD 08 79         lda BMP0 + 320 * 20 + 8,x
+000434r 3  9D 00 B9         sta BMP1 + 320 * 20,x
+000437r 3  BD 48 7A         lda BMP0 + 320 * 21 + 8,x
+00043Ar 3  9D 40 BA         sta BMP1 + 320 * 21,x
+00043Dr 3  BD 88 7B         lda BMP0 + 320 * 22 + 8,x
+000440r 3  9D 80 BB         sta BMP1 + 320 * 22,x
+000443r 3  BD C8 7C         lda BMP0 + 320 * 23 + 8,x
+000446r 3  9D C0 BC         sta BMP1 + 320 * 23,x
+000449r 3  BD 08 7E         lda BMP0 + 320 * 24 + 8,x
+00044Cr 3  9D 00 BE         sta BMP1 + 320 * 24,x
+00044Fr 3  E8               inx
+000450r 3  D0 01            bne left_BMP0_to_BMP1_256b
+000452r 3  60                   rts
+000453r 3               left_BMP0_to_BMP1_256b:
+000453r 3  4C rr rr         jmp left_BMP0_to_BMP1_256
+000456r 3               
+000456r 3               left_BMP0_to_BMP1_64:
+000456r 3  8A               txa
+000457r 3  29 0F            and #GRANULARITY
+000459r 3  D0 07            bne left_BMP0_to_BMP1_64_continue
+00045Br 3  8A                   txa
+00045Cr 3  48                   pha
+00045Dr 3  20 rr rr             jsr io_state
+000460r 3  68                   pla
+000461r 3  AA                   tax
+000462r 3               left_BMP0_to_BMP1_64_continue:
+000462r 3  BD 40 60         lda BMP0 + 56 + 8,x
+000465r 3  9D 38 A0         sta BMP1 + 56,x
+000468r 3  BD 80 61         lda BMP0 + 56 + 320 * 1 + 8,x
+00046Br 3  9D 78 A1         sta BMP1 + 56 + 320 * 1,x
+00046Er 3  BD C0 62         lda BMP0 + 56 + 320 * 2 + 8,x
+000471r 3  9D B8 A2         sta BMP1 + 56 + 320 * 2,x
+000474r 3  BD 00 64         lda BMP0 + 56 + 320 * 3 + 8,x
+000477r 3  9D F8 A3         sta BMP1 + 56 + 320 * 3,x
+00047Ar 3  BD 40 65         lda BMP0 + 56 + 320 * 4 + 8,x
+00047Dr 3  9D 38 A5         sta BMP1 + 56 + 320 * 4,x
+000480r 3  BD 80 66         lda BMP0 + 56 + 320 * 5 + 8,x
+000483r 3  9D 78 A6         sta BMP1 + 56 + 320 * 5,x
+000486r 3  BD C0 67         lda BMP0 + 56 + 320 * 6 + 8,x
+000489r 3  9D B8 A7         sta BMP1 + 56 + 320 * 6,x
+00048Cr 3  BD 00 69         lda BMP0 + 56 + 320 * 7 + 8,x
+00048Fr 3  9D F8 A8         sta BMP1 + 56 + 320 * 7,x
+000492r 3  BD 40 6A         lda BMP0 + 56 + 320 * 8 + 8,x
+000495r 3  9D 38 AA         sta BMP1 + 56 + 320 * 8,x
+000498r 3  BD 80 6B         lda BMP0 + 56 + 320 * 9 + 8,x
+00049Br 3  9D 78 AB         sta BMP1 + 56 + 320 * 9,x
+00049Er 3  BD C0 6C         lda BMP0 + 56 + 320 * 10 + 8,x
+0004A1r 3  9D B8 AC         sta BMP1 + 56 + 320 * 10,x
+0004A4r 3  BD 00 6E         lda BMP0 + 56 + 320 * 11 + 8,x
+0004A7r 3  9D F8 AD         sta BMP1 + 56 + 320 * 11,x
+0004AAr 3  BD 40 6F         lda BMP0 + 56 + 320 * 12 + 8,x
+0004ADr 3  9D 38 AF         sta BMP1 + 56 + 320 * 12,x
+0004B0r 3  BD 80 70         lda BMP0 + 56 + 320 * 13 + 8,x
+0004B3r 3  9D 78 B0         sta BMP1 + 56 + 320 * 13,x
+0004B6r 3  BD C0 71         lda BMP0 + 56 + 320 * 14 + 8,x
+0004B9r 3  9D B8 B1         sta BMP1 + 56 + 320 * 14,x
+0004BCr 3  BD 00 73         lda BMP0 + 56 + 320 * 15 + 8,x
+0004BFr 3  9D F8 B2         sta BMP1 + 56 + 320 * 15,x
+0004C2r 3  BD 40 74         lda BMP0 + 56 + 320 * 16 + 8,x
+0004C5r 3  9D 38 B4         sta BMP1 + 56 + 320 * 16,x
+0004C8r 3  BD 80 75         lda BMP0 + 56 + 320 * 17 + 8,x
+0004CBr 3  9D 78 B5         sta BMP1 + 56 + 320 * 17,x
+0004CEr 3  BD C0 76         lda BMP0 + 56 + 320 * 18 + 8,x
+0004D1r 3  9D B8 B6         sta BMP1 + 56 + 320 * 18,x
+0004D4r 3  BD 00 78         lda BMP0 + 56 + 320 * 19 + 8,x
+0004D7r 3  9D F8 B7         sta BMP1 + 56 + 320 * 19,x
+0004DAr 3  BD 40 79         lda BMP0 + 56 + 320 * 20 + 8,x
+0004DDr 3  9D 38 B9         sta BMP1 + 56 + 320 * 20,x
+0004E0r 3  BD 80 7A         lda BMP0 + 56 + 320 * 21 + 8,x
+0004E3r 3  9D 78 BA         sta BMP1 + 56 + 320 * 21,x
+0004E6r 3  BD C0 7B         lda BMP0 + 56 + 320 * 22 + 8,x
+0004E9r 3  9D B8 BB         sta BMP1 + 56 + 320 * 22,x
+0004ECr 3  BD 00 7D         lda BMP0 + 56 + 320 * 23 + 8,x
+0004EFr 3  9D F8 BC         sta BMP1 + 56 + 320 * 23,x
+0004F2r 3  BD 40 7E         lda BMP0 + 56 + 320 * 24 + 8,x
+0004F5r 3  9D 38 BE         sta BMP1 + 56 + 320 * 24,x
+0004F8r 3  E8               inx
+0004F9r 3  D0 01            bne left_BMP0_to_BMP1_64b
+0004FBr 3  60                   rts
+0004FCr 3               left_BMP0_to_BMP1_64b:
+0004FCr 3  4C rr rr         jmp left_BMP0_to_BMP1_64
+0004FFr 3               
+0004FFr 3               
+0004FFr 3               
+0004FFr 3               
+0004FFr 3               left_BMP1_to_BMP0_256:
+0004FFr 3  8A               txa
+000500r 3  29 0F            and #GRANULARITY
+000502r 3  D0 07            bne left_BMP1_to_BMP0_256_continue
+000504r 3  8A                   txa
+000505r 3  48                   pha
+000506r 3  20 rr rr             jsr io_state
+000509r 3  68                   pla
+00050Ar 3  AA                   tax
+00050Br 3               left_BMP1_to_BMP0_256_continue:
+00050Br 3  BD 08 A0         lda BMP1 + 8,x
+00050Er 3  9D 00 60         sta BMP0,x
+000511r 3  BD 48 A1         lda BMP1 + 320 * 1 + 8,x
+000514r 3  9D 40 61         sta BMP0 + 320 * 1,x
+000517r 3  BD 88 A2         lda BMP1 + 320 * 2 + 8,x
+00051Ar 3  9D 80 62         sta BMP0 + 320 * 2,x
+00051Dr 3  BD C8 A3         lda BMP1 + 320 * 3 + 8,x
+000520r 3  9D C0 63         sta BMP0 + 320 * 3,x
+000523r 3  BD 08 A5         lda BMP1 + 320 * 4 + 8,x
+000526r 3  9D 00 65         sta BMP0 + 320 * 4,x
+000529r 3  BD 48 A6         lda BMP1 + 320 * 5 + 8,x
+00052Cr 3  9D 40 66         sta BMP0 + 320 * 5,x
+00052Fr 3  BD 88 A7         lda BMP1 + 320 * 6 + 8,x
+000532r 3  9D 80 67         sta BMP0 + 320 * 6,x
+000535r 3  BD C8 A8         lda BMP1 + 320 * 7 + 8,x
+000538r 3  9D C0 68         sta BMP0 + 320 * 7,x
+00053Br 3  BD 08 AA         lda BMP1 + 320 * 8 + 8,x
+00053Er 3  9D 00 6A         sta BMP0 + 320 * 8,x
+000541r 3  BD 48 AB         lda BMP1 + 320 * 9 + 8,x
+000544r 3  9D 40 6B         sta BMP0 + 320 * 9,x
+000547r 3  BD 88 AC         lda BMP1 + 320 * 10 + 8,x
+00054Ar 3  9D 80 6C         sta BMP0 + 320 * 10,x
+00054Dr 3  BD C8 AD         lda BMP1 + 320 * 11 + 8,x
+000550r 3  9D C0 6D         sta BMP0 + 320 * 11,x
+000553r 3  BD 08 AF         lda BMP1 + 320 * 12 + 8,x
+000556r 3  9D 00 6F         sta BMP0 + 320 * 12,x
+000559r 3  BD 48 B0         lda BMP1 + 320 * 13 + 8,x
+00055Cr 3  9D 40 70         sta BMP0 + 320 * 13,x
+00055Fr 3  BD 88 B1         lda BMP1 + 320 * 14 + 8,x
+000562r 3  9D 80 71         sta BMP0 + 320 * 14,x
+000565r 3  BD C8 B2         lda BMP1 + 320 * 15 + 8,x
+000568r 3  9D C0 72         sta BMP0 + 320 * 15,x
+00056Br 3  BD 08 B4         lda BMP1 + 320 * 16 + 8,x
+00056Er 3  9D 00 74         sta BMP0 + 320 * 16,x
+000571r 3  BD 48 B5         lda BMP1 + 320 * 17 + 8,x
+000574r 3  9D 40 75         sta BMP0 + 320 * 17,x
+000577r 3  BD 88 B6         lda BMP1 + 320 * 18 + 8,x
+00057Ar 3  9D 80 76         sta BMP0 + 320 * 18,x
+00057Dr 3  BD C8 B7         lda BMP1 + 320 * 19 + 8,x
+000580r 3  9D C0 77         sta BMP0 + 320 * 19,x
+000583r 3  BD 08 B9         lda BMP1 + 320 * 20 + 8,x
+000586r 3  9D 00 79         sta BMP0 + 320 * 20,x
+000589r 3  BD 48 BA         lda BMP1 + 320 * 21 + 8,x
+00058Cr 3  9D 40 7A         sta BMP0 + 320 * 21,x
+00058Fr 3  BD 88 BB         lda BMP1 + 320 * 22 + 8,x
+000592r 3  9D 80 7B         sta BMP0 + 320 * 22,x
+000595r 3  BD C8 BC         lda BMP1 + 320 * 23 + 8,x
+000598r 3  9D C0 7C         sta BMP0 + 320 * 23,x
+00059Br 3  BD 08 BE         lda BMP1 + 320 * 24 + 8,x
+00059Er 3  9D 00 7E         sta BMP0 + 320 * 24,x
+0005A1r 3  E8               inx
+0005A2r 3  D0 01            bne left_BMP1_to_BMP0_256b
+0005A4r 3  60                   rts
+0005A5r 3               left_BMP1_to_BMP0_256b:
+0005A5r 3  4C rr rr         jmp left_BMP1_to_BMP0_256
+0005A8r 3  60               rts
+0005A9r 3               
+0005A9r 3               left_BMP1_to_BMP0_64:
+0005A9r 3  8A               txa
+0005AAr 3  29 0F            and #GRANULARITY
+0005ACr 3  D0 07            bne left_BMP1_to_BMP0_64_continue
+0005AEr 3  8A                   txa
+0005AFr 3  48                   pha
+0005B0r 3  20 rr rr             jsr io_state
+0005B3r 3  68                   pla
+0005B4r 3  AA                   tax
+0005B5r 3               left_BMP1_to_BMP0_64_continue:
+0005B5r 3  BD 40 A0         lda BMP1 + 56 + 8,x
+0005B8r 3  9D 38 60         sta BMP0 + 56,x
+0005BBr 3  BD 80 A1         lda BMP1 + 56 + 320 * 1 + 8,x
+0005BEr 3  9D 78 61         sta BMP0 + 56 + 320 * 1,x
+0005C1r 3  BD C0 A2         lda BMP1 + 56 + 320 * 2 + 8,x
+0005C4r 3  9D B8 62         sta BMP0 + 56 + 320 * 2,x
+0005C7r 3  BD 00 A4         lda BMP1 + 56 + 320 * 3 + 8,x
+0005CAr 3  9D F8 63         sta BMP0 + 56 + 320 * 3,x
+0005CDr 3  BD 40 A5         lda BMP1 + 56 + 320 * 4 + 8,x
+0005D0r 3  9D 38 65         sta BMP0 + 56 + 320 * 4,x
+0005D3r 3  BD 80 A6         lda BMP1 + 56 + 320 * 5 + 8,x
+0005D6r 3  9D 78 66         sta BMP0 + 56 + 320 * 5,x
+0005D9r 3  BD C0 A7         lda BMP1 + 56 + 320 * 6 + 8,x
+0005DCr 3  9D B8 67         sta BMP0 + 56 + 320 * 6,x
+0005DFr 3  BD 00 A9         lda BMP1 + 56 + 320 * 7 + 8,x
+0005E2r 3  9D F8 68         sta BMP0 + 56 + 320 * 7,x
+0005E5r 3  BD 40 AA         lda BMP1 + 56 + 320 * 8 + 8,x
+0005E8r 3  9D 38 6A         sta BMP0 + 56 + 320 * 8,x
+0005EBr 3  BD 80 AB         lda BMP1 + 56 + 320 * 9 + 8,x
+0005EEr 3  9D 78 6B         sta BMP0 + 56 + 320 * 9,x
+0005F1r 3  BD C0 AC         lda BMP1 + 56 + 320 * 10 + 8,x
+0005F4r 3  9D B8 6C         sta BMP0 + 56 + 320 * 10,x
+0005F7r 3  BD 00 AE         lda BMP1 + 56 + 320 * 11 + 8,x
+0005FAr 3  9D F8 6D         sta BMP0 + 56 + 320 * 11,x
+0005FDr 3  BD 40 AF         lda BMP1 + 56 + 320 * 12 + 8,x
+000600r 3  9D 38 6F         sta BMP0 + 56 + 320 * 12,x
+000603r 3  BD 80 B0         lda BMP1 + 56 + 320 * 13 + 8,x
+000606r 3  9D 78 70         sta BMP0 + 56 + 320 * 13,x
+000609r 3  BD C0 B1         lda BMP1 + 56 + 320 * 14 + 8,x
+00060Cr 3  9D B8 71         sta BMP0 + 56 + 320 * 14,x
+00060Fr 3  BD 00 B3         lda BMP1 + 56 + 320 * 15 + 8,x
+000612r 3  9D F8 72         sta BMP0 + 56 + 320 * 15,x
+000615r 3  BD 40 B4         lda BMP1 + 56 + 320 * 16 + 8,x
+000618r 3  9D 38 74         sta BMP0 + 56 + 320 * 16,x
+00061Br 3  BD 80 B5         lda BMP1 + 56 + 320 * 17 + 8,x
+00061Er 3  9D 78 75         sta BMP0 + 56 + 320 * 17,x
+000621r 3  BD C0 B6         lda BMP1 + 56 + 320 * 18 + 8,x
+000624r 3  9D B8 76         sta BMP0 + 56 + 320 * 18,x
+000627r 3  BD 00 B8         lda BMP1 + 56 + 320 * 19 + 8,x
+00062Ar 3  9D F8 77         sta BMP0 + 56 + 320 * 19,x
+00062Dr 3  BD 40 B9         lda BMP1 + 56 + 320 * 20 + 8,x
+000630r 3  9D 38 79         sta BMP0 + 56 + 320 * 20,x
+000633r 3  BD 80 BA         lda BMP1 + 56 + 320 * 21 + 8,x
+000636r 3  9D 78 7A         sta BMP0 + 56 + 320 * 21,x
+000639r 3  BD C0 BB         lda BMP1 + 56 + 320 * 22 + 8,x
+00063Cr 3  9D B8 7B         sta BMP0 + 56 + 320 * 22,x
+00063Fr 3  BD 00 BD         lda BMP1 + 56 + 320 * 23 + 8,x
+000642r 3  9D F8 7C         sta BMP0 + 56 + 320 * 23,x
+000645r 3  BD 40 BE         lda BMP1 + 56 + 320 * 24 + 8,x
+000648r 3  9D 38 7E         sta BMP0 + 56 + 320 * 24,x
+00064Br 3  E8               inx
+00064Cr 3  D0 01            bne left_BMP1_to_BMP0_64b
+00064Er 3  60                   rts
+00064Fr 3               left_BMP1_to_BMP0_64b:
+00064Fr 3  4C rr rr         jmp left_BMP1_to_BMP0_64
+000652r 3               
+000652r 3               
+000652r 3               
+000652r 3               
+000652r 3               
+000652r 3               
+000652r 3               
+000652r 3               
+000652r 3               
+000652r 3               
+000652r 3               
+000652r 3               
+000652r 3               
+000652r 3               
+000652r 3               
+000652r 3               right_BMP0_to_BMP1_256:
+000652r 3  BD 00 60         lda BMP0,x
+000655r 3  9D 08 A0         sta BMP1 + 8,x
+000658r 3  BD 40 61         lda BMP0 + 320 * 1,x
+00065Br 3  9D 48 A1         sta BMP1 + 320 * 1 + 8,x
+00065Er 3  BD 80 62         lda BMP0 + 320 * 2,x
+000661r 3  9D 88 A2         sta BMP1 + 320 * 2 + 8,x
+000664r 3  BD C0 63         lda BMP0 + 320 * 3,x
+000667r 3  9D C8 A3         sta BMP1 + 320 * 3 + 8,x
+00066Ar 3  BD 00 65         lda BMP0 + 320 * 4,x
+00066Dr 3  9D 08 A5         sta BMP1 + 320 * 4 + 8,x
+000670r 3  BD 40 66         lda BMP0 + 320 * 5,x
+000673r 3  9D 48 A6         sta BMP1 + 320 * 5 + 8,x
+000676r 3  BD 80 67         lda BMP0 + 320 * 6,x
+000679r 3  9D 88 A7         sta BMP1 + 320 * 6 + 8,x
+00067Cr 3  BD C0 68         lda BMP0 + 320 * 7,x
+00067Fr 3  9D C8 A8         sta BMP1 + 320 * 7 + 8,x
+000682r 3  BD 00 6A         lda BMP0 + 320 * 8,x
+000685r 3  9D 08 AA         sta BMP1 + 320 * 8 + 8,x
+000688r 3  BD 40 6B         lda BMP0 + 320 * 9,x
+00068Br 3  9D 48 AB         sta BMP1 + 320 * 9 + 8,x
+00068Er 3  BD 80 6C         lda BMP0 + 320 * 10,x
+000691r 3  9D 88 AC         sta BMP1 + 320 * 10 + 8,x
+000694r 3  BD C0 6D         lda BMP0 + 320 * 11,x
+000697r 3  9D C8 AD         sta BMP1 + 320 * 11 + 8,x
+00069Ar 3  BD 00 6F         lda BMP0 + 320 * 12,x
+00069Dr 3  9D 08 AF         sta BMP1 + 320 * 12 + 8,x
+0006A0r 3  BD 40 70         lda BMP0 + 320 * 13,x
+0006A3r 3  9D 48 B0         sta BMP1 + 320 * 13 + 8,x
+0006A6r 3  BD 80 71         lda BMP0 + 320 * 14,x
+0006A9r 3  9D 88 B1         sta BMP1 + 320 * 14 + 8,x
+0006ACr 3  BD C0 72         lda BMP0 + 320 * 15,x
+0006AFr 3  9D C8 B2         sta BMP1 + 320 * 15 + 8,x
+0006B2r 3  BD 00 74         lda BMP0 + 320 * 16,x
+0006B5r 3  9D 08 B4         sta BMP1 + 320 * 16 + 8,x
+0006B8r 3  BD 40 75         lda BMP0 + 320 * 17,x
+0006BBr 3  9D 48 B5         sta BMP1 + 320 * 17 + 8,x
+0006BEr 3  BD 80 76         lda BMP0 + 320 * 18,x
+0006C1r 3  9D 88 B6         sta BMP1 + 320 * 18 + 8,x
+0006C4r 3  BD C0 77         lda BMP0 + 320 * 19,x
+0006C7r 3  9D C8 B7         sta BMP1 + 320 * 19 + 8,x
+0006CAr 3  BD 00 79         lda BMP0 + 320 * 20,x
+0006CDr 3  9D 08 B9         sta BMP1 + 320 * 20 + 8,x
+0006D0r 3  BD 40 7A         lda BMP0 + 320 * 21,x
+0006D3r 3  9D 48 BA         sta BMP1 + 320 * 21 + 8,x
+0006D6r 3  BD 80 7B         lda BMP0 + 320 * 22,x
+0006D9r 3  9D 88 BB         sta BMP1 + 320 * 22 + 8,x
+0006DCr 3  BD C0 7C         lda BMP0 + 320 * 23,x
+0006DFr 3  9D C8 BC         sta BMP1 + 320 * 23 + 8,x
+0006E2r 3  BD 00 7E         lda BMP0 + 320 * 24,x
+0006E5r 3  9D 08 BE         sta BMP1 + 320 * 24 + 8,x
+0006E8r 3  E8               inx
+0006E9r 3  D0 01            bne right_BMP0_to_BMP1_256b
+0006EBr 3  60                   rts
+0006ECr 3               right_BMP0_to_BMP1_256b:
+0006ECr 3  4C rr rr         jmp right_BMP0_to_BMP1_256
+0006EFr 3               
+0006EFr 3               right_BMP0_to_BMP1_64:
+0006EFr 3  BD 38 60         lda BMP0 + 56,x
+0006F2r 3  9D 40 A0         sta BMP1 + 56 + 8,x
+0006F5r 3  BD 78 61         lda BMP0 + 56 + 320 * 1,x
+0006F8r 3  9D 80 A1         sta BMP1 + 56 + 320 * 1 + 8,x
+0006FBr 3  BD B8 62         lda BMP0 + 56 + 320 * 2,x
+0006FEr 3  9D C0 A2         sta BMP1 + 56 + 320 * 2 + 8,x
+000701r 3  BD F8 63         lda BMP0 + 56 + 320 * 3,x
+000704r 3  9D 00 A4         sta BMP1 + 56 + 320 * 3 + 8,x
+000707r 3  BD 38 65         lda BMP0 + 56 + 320 * 4,x
+00070Ar 3  9D 40 A5         sta BMP1 + 56 + 320 * 4 + 8,x
+00070Dr 3  BD 78 66         lda BMP0 + 56 + 320 * 5,x
+000710r 3  9D 80 A6         sta BMP1 + 56 + 320 * 5 + 8,x
+000713r 3  BD B8 67         lda BMP0 + 56 + 320 * 6,x
+000716r 3  9D C0 A7         sta BMP1 + 56 + 320 * 6 + 8,x
+000719r 3  BD F8 68         lda BMP0 + 56 + 320 * 7,x
+00071Cr 3  9D 00 A9         sta BMP1 + 56 + 320 * 7 + 8,x
+00071Fr 3  BD 38 6A         lda BMP0 + 56 + 320 * 8,x
+000722r 3  9D 40 AA         sta BMP1 + 56 + 320 * 8 + 8,x
+000725r 3  BD 78 6B         lda BMP0 + 56 + 320 * 9,x
+000728r 3  9D 80 AB         sta BMP1 + 56 + 320 * 9 + 8,x
+00072Br 3  BD B8 6C         lda BMP0 + 56 + 320 * 10,x
+00072Er 3  9D C0 AC         sta BMP1 + 56 + 320 * 10 + 8,x
+000731r 3  BD F8 6D         lda BMP0 + 56 + 320 * 11,x
+000734r 3  9D 00 AE         sta BMP1 + 56 + 320 * 11 + 8,x
+000737r 3  BD 38 6F         lda BMP0 + 56 + 320 * 12,x
+00073Ar 3  9D 40 AF         sta BMP1 + 56 + 320 * 12 + 8,x
+00073Dr 3  BD 78 70         lda BMP0 + 56 + 320 * 13,x
+000740r 3  9D 80 B0         sta BMP1 + 56 + 320 * 13 + 8,x
+000743r 3  BD B8 71         lda BMP0 + 56 + 320 * 14,x
+000746r 3  9D C0 B1         sta BMP1 + 56 + 320 * 14 + 8,x
+000749r 3  BD F8 72         lda BMP0 + 56 + 320 * 15,x
+00074Cr 3  9D 00 B3         sta BMP1 + 56 + 320 * 15 + 8,x
+00074Fr 3  BD 38 74         lda BMP0 + 56 + 320 * 16,x
+000752r 3  9D 40 B4         sta BMP1 + 56 + 320 * 16 + 8,x
+000755r 3  BD 78 75         lda BMP0 + 56 + 320 * 17,x
+000758r 3  9D 80 B5         sta BMP1 + 56 + 320 * 17 + 8,x
+00075Br 3  BD B8 76         lda BMP0 + 56 + 320 * 18,x
+00075Er 3  9D C0 B6         sta BMP1 + 56 + 320 * 18 + 8,x
+000761r 3  BD F8 77         lda BMP0 + 56 + 320 * 19,x
+000764r 3  9D 00 B8         sta BMP1 + 56 + 320 * 19 + 8,x
+000767r 3  BD 38 79         lda BMP0 + 56 + 320 * 20,x
+00076Ar 3  9D 40 B9         sta BMP1 + 56 + 320 * 20 + 8,x
+00076Dr 3  BD 78 7A         lda BMP0 + 56 + 320 * 21,x
+000770r 3  9D 80 BA         sta BMP1 + 56 + 320 * 21 + 8,x
+000773r 3  BD B8 7B         lda BMP0 + 56 + 320 * 22,x
+000776r 3  9D C0 BB         sta BMP1 + 56 + 320 * 22 + 8,x
+000779r 3  BD F8 7C         lda BMP0 + 56 + 320 * 23,x
+00077Cr 3  9D 00 BD         sta BMP1 + 56 + 320 * 23 + 8,x
+00077Fr 3  BD 38 7E         lda BMP0 + 56 + 320 * 24,x
+000782r 3  9D 40 BE         sta BMP1 + 56 + 320 * 24 + 8,x
+000785r 3  E8               inx
+000786r 3  D0 01            bne right_BMP0_to_BMP1_64b
+000788r 3  60                   rts
+000789r 3               right_BMP0_to_BMP1_64b:
+000789r 3  4C rr rr         jmp right_BMP0_to_BMP1_64
+00078Cr 3               
+00078Cr 3               
+00078Cr 3               
+00078Cr 3               
+00078Cr 3               right_BMP1_to_BMP0_256:
+00078Cr 3  BD 00 A0         lda BMP1,x
+00078Fr 3  9D 08 60         sta BMP0 + 8,x
+000792r 3  BD 40 A1         lda BMP1 + 320 * 1,x
+000795r 3  9D 48 61         sta BMP0 + 320 * 1 + 8,x
+000798r 3  BD 80 A2         lda BMP1 + 320 * 2,x
+00079Br 3  9D 88 62         sta BMP0 + 320 * 2 + 8,x
+00079Er 3  BD C0 A3         lda BMP1 + 320 * 3,x
+0007A1r 3  9D C8 63         sta BMP0 + 320 * 3 + 8,x
+0007A4r 3  BD 00 A5         lda BMP1 + 320 * 4,x
+0007A7r 3  9D 08 65         sta BMP0 + 320 * 4 + 8,x
+0007AAr 3  BD 40 A6         lda BMP1 + 320 * 5,x
+0007ADr 3  9D 48 66         sta BMP0 + 320 * 5 + 8,x
+0007B0r 3  BD 80 A7         lda BMP1 + 320 * 6,x
+0007B3r 3  9D 88 67         sta BMP0 + 320 * 6 + 8,x
+0007B6r 3  BD C0 A8         lda BMP1 + 320 * 7,x
+0007B9r 3  9D C8 68         sta BMP0 + 320 * 7 + 8,x
+0007BCr 3  BD 00 AA         lda BMP1 + 320 * 8,x
+0007BFr 3  9D 08 6A         sta BMP0 + 320 * 8 + 8,x
+0007C2r 3  BD 40 AB         lda BMP1 + 320 * 9,x
+0007C5r 3  9D 48 6B         sta BMP0 + 320 * 9 + 8,x
+0007C8r 3  BD 80 AC         lda BMP1 + 320 * 10,x
+0007CBr 3  9D 88 6C         sta BMP0 + 320 * 10 + 8,x
+0007CEr 3  BD C0 AD         lda BMP1 + 320 * 11,x
+0007D1r 3  9D C8 6D         sta BMP0 + 320 * 11 + 8,x
+0007D4r 3  BD 00 AF         lda BMP1 + 320 * 12,x
+0007D7r 3  9D 08 6F         sta BMP0 + 320 * 12 + 8,x
+0007DAr 3  BD 40 B0         lda BMP1 + 320 * 13,x
+0007DDr 3  9D 48 70         sta BMP0 + 320 * 13 + 8,x
+0007E0r 3  BD 80 B1         lda BMP1 + 320 * 14,x
+0007E3r 3  9D 88 71         sta BMP0 + 320 * 14 + 8,x
+0007E6r 3  BD C0 B2         lda BMP1 + 320 * 15,x
+0007E9r 3  9D C8 72         sta BMP0 + 320 * 15 + 8,x
+0007ECr 3  BD 00 B4         lda BMP1 + 320 * 16,x
+0007EFr 3  9D 08 74         sta BMP0 + 320 * 16 + 8,x
+0007F2r 3  BD 40 B5         lda BMP1 + 320 * 17,x
+0007F5r 3  9D 48 75         sta BMP0 + 320 * 17 + 8,x
+0007F8r 3  BD 80 B6         lda BMP1 + 320 * 18,x
+0007FBr 3  9D 88 76         sta BMP0 + 320 * 18 + 8,x
+0007FEr 3  BD C0 B7         lda BMP1 + 320 * 19,x
+000801r 3  9D C8 77         sta BMP0 + 320 * 19 + 8,x
+000804r 3  BD 00 B9         lda BMP1 + 320 * 20,x
+000807r 3  9D 08 79         sta BMP0 + 320 * 20 + 8,x
+00080Ar 3  BD 40 BA         lda BMP1 + 320 * 21,x
+00080Dr 3  9D 48 7A         sta BMP0 + 320 * 21 + 8,x
+000810r 3  BD 80 BB         lda BMP1 + 320 * 22,x
+000813r 3  9D 88 7B         sta BMP0 + 320 * 22 + 8,x
+000816r 3  BD C0 BC         lda BMP1 + 320 * 23,x
+000819r 3  9D C8 7C         sta BMP0 + 320 * 23 + 8,x
+00081Cr 3  BD 00 BE         lda BMP1 + 320 * 24,x
+00081Fr 3  9D 08 7E         sta BMP0 + 320 * 24 + 8,x
+000822r 3  E8               inx
+000823r 3  D0 01            bne right_BMP1_to_BMP0_256b
+000825r 3  60                   rts
+000826r 3               right_BMP1_to_BMP0_256b:
+000826r 3  4C rr rr         jmp right_BMP1_to_BMP0_256
+000829r 3  60               rts
+00082Ar 3               
+00082Ar 3               right_BMP1_to_BMP0_64:
+00082Ar 3  BD 38 A0         lda BMP1 + 56,x
+00082Dr 3  9D 40 60         sta BMP0 + 56 + 8,x
+000830r 3  BD 78 A1         lda BMP1 + 56 + 320 * 1,x
+000833r 3  9D 80 61         sta BMP0 + 56 + 320 * 1 + 8,x
+000836r 3  BD B8 A2         lda BMP1 + 56 + 320 * 2,x
+000839r 3  9D C0 62         sta BMP0 + 56 + 320 * 2 + 8,x
+00083Cr 3  BD F8 A3         lda BMP1 + 56 + 320 * 3,x
+00083Fr 3  9D 00 64         sta BMP0 + 56 + 320 * 3 + 8,x
+000842r 3  BD 38 A5         lda BMP1 + 56 + 320 * 4,x
+000845r 3  9D 40 65         sta BMP0 + 56 + 320 * 4 + 8,x
+000848r 3  BD 78 A6         lda BMP1 + 56 + 320 * 5,x
+00084Br 3  9D 80 66         sta BMP0 + 56 + 320 * 5 + 8,x
+00084Er 3  BD B8 A7         lda BMP1 + 56 + 320 * 6,x
+000851r 3  9D C0 67         sta BMP0 + 56 + 320 * 6 + 8,x
+000854r 3  BD F8 A8         lda BMP1 + 56 + 320 * 7,x
+000857r 3  9D 00 69         sta BMP0 + 56 + 320 * 7 + 8,x
+00085Ar 3  BD 38 AA         lda BMP1 + 56 + 320 * 8,x
+00085Dr 3  9D 40 6A         sta BMP0 + 56 + 320 * 8 + 8,x
+000860r 3  BD 78 AB         lda BMP1 + 56 + 320 * 9,x
+000863r 3  9D 80 6B         sta BMP0 + 56 + 320 * 9 + 8,x
+000866r 3  BD B8 AC         lda BMP1 + 56 + 320 * 10,x
+000869r 3  9D C0 6C         sta BMP0 + 56 + 320 * 10 + 8,x
+00086Cr 3  BD F8 AD         lda BMP1 + 56 + 320 * 11,x
+00086Fr 3  9D 00 6E         sta BMP0 + 56 + 320 * 11 + 8,x
+000872r 3  BD 38 AF         lda BMP1 + 56 + 320 * 12,x
+000875r 3  9D 40 6F         sta BMP0 + 56 + 320 * 12 + 8,x
+000878r 3  BD 78 B0         lda BMP1 + 56 + 320 * 13,x
+00087Br 3  9D 80 70         sta BMP0 + 56 + 320 * 13 + 8,x
+00087Er 3  BD B8 B1         lda BMP1 + 56 + 320 * 14,x
+000881r 3  9D C0 71         sta BMP0 + 56 + 320 * 14 + 8,x
+000884r 3  BD F8 B2         lda BMP1 + 56 + 320 * 15,x
+000887r 3  9D 00 73         sta BMP0 + 56 + 320 * 15 + 8,x
+00088Ar 3  BD 38 B4         lda BMP1 + 56 + 320 * 16,x
+00088Dr 3  9D 40 74         sta BMP0 + 56 + 320 * 16 + 8,x
+000890r 3  BD 78 B5         lda BMP1 + 56 + 320 * 17,x
+000893r 3  9D 80 75         sta BMP0 + 56 + 320 * 17 + 8,x
+000896r 3  BD B8 B6         lda BMP1 + 56 + 320 * 18,x
+000899r 3  9D C0 76         sta BMP0 + 56 + 320 * 18 + 8,x
+00089Cr 3  BD F8 B7         lda BMP1 + 56 + 320 * 19,x
+00089Fr 3  9D 00 78         sta BMP0 + 56 + 320 * 19 + 8,x
+0008A2r 3  BD 38 B9         lda BMP1 + 56 + 320 * 20,x
+0008A5r 3  9D 40 79         sta BMP0 + 56 + 320 * 20 + 8,x
+0008A8r 3  BD 78 BA         lda BMP1 + 56 + 320 * 21,x
+0008ABr 3  9D 80 7A         sta BMP0 + 56 + 320 * 21 + 8,x
+0008AEr 3  BD B8 BB         lda BMP1 + 56 + 320 * 22,x
+0008B1r 3  9D C0 7B         sta BMP0 + 56 + 320 * 22 + 8,x
+0008B4r 3  BD F8 BC         lda BMP1 + 56 + 320 * 23,x
+0008B7r 3  9D 00 7D         sta BMP0 + 56 + 320 * 23 + 8,x
+0008BAr 3  BD 38 BE         lda BMP1 + 56 + 320 * 24,x
+0008BDr 3  9D 40 7E         sta BMP0 + 56 + 320 * 24 + 8,x
+0008C0r 3  E8               inx
+0008C1r 3  D0 01            bne right_BMP1_to_BMP0_64b
+0008C3r 3  60                   rts
+0008C4r 3               right_BMP1_to_BMP0_64b:
+0008C4r 3  4C rr rr         jmp right_BMP1_to_BMP0_64
+0008C7r 3               
+0008C7r 3               
+0008C7r 3               
+0008C7r 3               
+0008C7r 3               ; move 7680 bytes up 320
+0008C7r 3               up_BMP0_to_BMP1:
+0008C7r 3  BD 40 61         lda BMP0 + 320,x
+0008CAr 3  9D 00 A0         sta BMP1,x
+0008CDr 3  BD 40 62         lda BMP0 + 256 * 1 + 320,x
+0008D0r 3  9D 00 A1         sta BMP1 + 256 * 1,x
+0008D3r 3  BD 40 63         lda BMP0 + 256 * 2 + 320,x
+0008D6r 3  9D 00 A2         sta BMP1 + 256 * 2,x
+0008D9r 3  BD 40 64         lda BMP0 + 256 * 3 + 320,x
+0008DCr 3  9D 00 A3         sta BMP1 + 256 * 3,x
+0008DFr 3  BD 40 65         lda BMP0 + 256 * 4 + 320,x
+0008E2r 3  9D 00 A4         sta BMP1 + 256 * 4,x
+0008E5r 3  BD 40 66         lda BMP0 + 256 * 5 + 320,x
+0008E8r 3  9D 00 A5         sta BMP1 + 256 * 5,x
+0008EBr 3  BD 40 67         lda BMP0 + 256 * 6 + 320,x
+0008EEr 3  9D 00 A6         sta BMP1 + 256 * 6,x
+0008F1r 3  BD 40 68         lda BMP0 + 256 * 7 + 320,x
+0008F4r 3  9D 00 A7         sta BMP1 + 256 * 7,x
+0008F7r 3  BD 40 69         lda BMP0 + 256 * 8 + 320,x
+0008FAr 3  9D 00 A8         sta BMP1 + 256 * 8,x
+0008FDr 3  BD 40 6A         lda BMP0 + 256 * 9 + 320,x
+000900r 3  9D 00 A9         sta BMP1 + 256 * 9,x
+000903r 3  BD 40 6B         lda BMP0 + 256 * 10 + 320,x
+000906r 3  9D 00 AA         sta BMP1 + 256 * 10,x
+000909r 3  BD 40 6C         lda BMP0 + 256 * 11 + 320,x
+00090Cr 3  9D 00 AB         sta BMP1 + 256 * 11,x
+00090Fr 3  BD 40 6D         lda BMP0 + 256 * 12 + 320,x
+000912r 3  9D 00 AC         sta BMP1 + 256 * 12,x
+000915r 3  BD 40 6E         lda BMP0 + 256 * 13 + 320,x
+000918r 3  9D 00 AD         sta BMP1 + 256 * 13,x
+00091Br 3  BD 40 6F         lda BMP0 + 256 * 14 + 320,x
+00091Er 3  9D 00 AE         sta BMP1 + 256 * 14,x
+000921r 3  BD 40 70         lda BMP0 + 256 * 15 + 320,x
+000924r 3  9D 00 AF         sta BMP1 + 256 * 15,x
+000927r 3  BD 40 71         lda BMP0 + 256 * 16 + 320,x
+00092Ar 3  9D 00 B0         sta BMP1 + 256 * 16,x
+00092Dr 3  BD 40 72         lda BMP0 + 256 * 17 + 320,x
+000930r 3  9D 00 B1         sta BMP1 + 256 * 17,x
+000933r 3  BD 40 73         lda BMP0 + 256 * 18 + 320,x
+000936r 3  9D 00 B2         sta BMP1 + 256 * 18,x
+000939r 3  BD 40 74         lda BMP0 + 256 * 19 + 320,x
+00093Cr 3  9D 00 B3         sta BMP1 + 256 * 19,x
+00093Fr 3  BD 40 75         lda BMP0 + 256 * 20 + 320,x
+000942r 3  9D 00 B4         sta BMP1 + 256 * 20,x
+000945r 3  BD 40 76         lda BMP0 + 256 * 21 + 320,x
+000948r 3  9D 00 B5         sta BMP1 + 256 * 21,x
+00094Br 3  BD 40 77         lda BMP0 + 256 * 22 + 320,x
+00094Er 3  9D 00 B6         sta BMP1 + 256 * 22,x
+000951r 3  BD 40 78         lda BMP0 + 256 * 23 + 320,x
+000954r 3  9D 00 B7         sta BMP1 + 256 * 23,x
+000957r 3  BD 40 79         lda BMP0 + 256 * 24 + 320,x
+00095Ar 3  9D 00 B8         sta BMP1 + 256 * 24,x
+00095Dr 3  BD 40 7A         lda BMP0 + 256 * 25 + 320,x
+000960r 3  9D 00 B9         sta BMP1 + 256 * 25,x
+000963r 3  BD 40 7B         lda BMP0 + 256 * 26 + 320,x
+000966r 3  9D 00 BA         sta BMP1 + 256 * 26,x
+000969r 3  BD 40 7C         lda BMP0 + 256 * 27 + 320,x
+00096Cr 3  9D 00 BB         sta BMP1 + 256 * 27,x
+00096Fr 3  BD 40 7D         lda BMP0 + 256 * 28 + 320,x
+000972r 3  9D 00 BC         sta BMP1 + 256 * 28,x
+000975r 3  BD 40 7E         lda BMP0 + 256 * 29 + 320,x
+000978r 3  9D 00 BD         sta BMP1 + 256 * 29,x
+00097Br 3  E8               inx
+00097Cr 3  D0 01            bne up_BMP0_to_BMP1b
+00097Er 3  60                   rts
+00097Fr 3               up_BMP0_to_BMP1b:
+00097Fr 3  4C rr rr         jmp up_BMP0_to_BMP1
+000982r 3               
+000982r 3               
+000982r 3               up_BMP1_to_BMP0:
+000982r 3  BD 40 A1         lda BMP1 + 320,x
+000985r 3  9D 00 60         sta BMP0,x
+000988r 3  BD 40 A2         lda BMP1 + 256 * 1 + 320,x
+00098Br 3  9D 00 61         sta BMP0 + 256 * 1,x
+00098Er 3  BD 40 A3         lda BMP1 + 256 * 2 + 320,x
+000991r 3  9D 00 62         sta BMP0 + 256 * 2,x
+000994r 3  BD 40 A4         lda BMP1 + 256 * 3 + 320,x
+000997r 3  9D 00 63         sta BMP0 + 256 * 3,x
+00099Ar 3  BD 40 A5         lda BMP1 + 256 * 4 + 320,x
+00099Dr 3  9D 00 64         sta BMP0 + 256 * 4,x
+0009A0r 3  BD 40 A6         lda BMP1 + 256 * 5 + 320,x
+0009A3r 3  9D 00 65         sta BMP0 + 256 * 5,x
+0009A6r 3  BD 40 A7         lda BMP1 + 256 * 6 + 320,x
+0009A9r 3  9D 00 66         sta BMP0 + 256 * 6,x
+0009ACr 3  BD 40 A8         lda BMP1 + 256 * 7 + 320,x
+0009AFr 3  9D 00 67         sta BMP0 + 256 * 7,x
+0009B2r 3  BD 40 A9         lda BMP1 + 256 * 8 + 320,x
+0009B5r 3  9D 00 68         sta BMP0 + 256 * 8,x
+0009B8r 3  BD 40 AA         lda BMP1 + 256 * 9 + 320,x
+0009BBr 3  9D 00 69         sta BMP0 + 256 * 9,x
+0009BEr 3  BD 40 AB         lda BMP1 + 256 * 10 + 320,x
+0009C1r 3  9D 00 6A         sta BMP0 + 256 * 10,x
+0009C4r 3  BD 40 AC         lda BMP1 + 256 * 11 + 320,x
+0009C7r 3  9D 00 6B         sta BMP0 + 256 * 11,x
+0009CAr 3  BD 40 AD         lda BMP1 + 256 * 12 + 320,x
+0009CDr 3  9D 00 6C         sta BMP0 + 256 * 12,x
+0009D0r 3  BD 40 AE         lda BMP1 + 256 * 13 + 320,x
+0009D3r 3  9D 00 6D         sta BMP0 + 256 * 13,x
+0009D6r 3  BD 40 AF         lda BMP1 + 256 * 14 + 320,x
+0009D9r 3  9D 00 6E         sta BMP0 + 256 * 14,x
+0009DCr 3  BD 40 B0         lda BMP1 + 256 * 15 + 320,x
+0009DFr 3  9D 00 6F         sta BMP0 + 256 * 15,x
+0009E2r 3  BD 40 B1         lda BMP1 + 256 * 16 + 320,x
+0009E5r 3  9D 00 70         sta BMP0 + 256 * 16,x
+0009E8r 3  BD 40 B2         lda BMP1 + 256 * 17 + 320,x
+0009EBr 3  9D 00 71         sta BMP0 + 256 * 17,x
+0009EEr 3  BD 40 B3         lda BMP1 + 256 * 18 + 320,x
+0009F1r 3  9D 00 72         sta BMP0 + 256 * 18,x
+0009F4r 3  BD 40 B4         lda BMP1 + 256 * 19 + 320,x
+0009F7r 3  9D 00 73         sta BMP0 + 256 * 19,x
+0009FAr 3  BD 40 B5         lda BMP1 + 256 * 20 + 320,x
+0009FDr 3  9D 00 74         sta BMP0 + 256 * 20,x
+000A00r 3  BD 40 B6         lda BMP1 + 256 * 21 + 320,x
+000A03r 3  9D 00 75         sta BMP0 + 256 * 21,x
+000A06r 3  BD 40 B7         lda BMP1 + 256 * 22 + 320,x
+000A09r 3  9D 00 76         sta BMP0 + 256 * 22,x
+000A0Cr 3  BD 40 B8         lda BMP1 + 256 * 23 + 320,x
+000A0Fr 3  9D 00 77         sta BMP0 + 256 * 23,x
+000A12r 3  BD 40 B9         lda BMP1 + 256 * 24 + 320,x
+000A15r 3  9D 00 78         sta BMP0 + 256 * 24,x
+000A18r 3  BD 40 BA         lda BMP1 + 256 * 25 + 320,x
+000A1Br 3  9D 00 79         sta BMP0 + 256 * 25,x
+000A1Er 3  BD 40 BB         lda BMP1 + 256 * 26 + 320,x
+000A21r 3  9D 00 7A         sta BMP0 + 256 * 26,x
+000A24r 3  BD 40 BC         lda BMP1 + 256 * 27 + 320,x
+000A27r 3  9D 00 7B         sta BMP0 + 256 * 27,x
+000A2Ar 3  BD 40 BD         lda BMP1 + 256 * 28 + 320,x
+000A2Dr 3  9D 00 7C         sta BMP0 + 256 * 28,x
+000A30r 3  BD 40 BE         lda BMP1 + 256 * 29 + 320,x
+000A33r 3  9D 00 7D         sta BMP0 + 256 * 29,x
+000A36r 3  E8               inx
+000A37r 3  D0 01            bne up_BMP1_to_BMP0b
+000A39r 3  60                   rts
+000A3Ar 3               up_BMP1_to_BMP0b:
+000A3Ar 3  4C rr rr         jmp up_BMP1_to_BMP0
+000A3Dr 3               
+000A3Dr 3               
+000A3Dr 3               
+000A3Dr 3               ; move 7680 bytes down 320
+000A3Dr 3               down_BMP0_to_BMP1:
+000A3Dr 3  BD 00 60         lda BMP0,x
+000A40r 3  9D 40 A1         sta BMP1 + 320,x
+000A43r 3  BD 00 61         lda BMP0 + 256 * 1,x
+000A46r 3  9D 40 A2         sta BMP1 + 256 * 1 + 320,x
+000A49r 3  BD 00 62         lda BMP0 + 256 * 2,x
+000A4Cr 3  9D 40 A3         sta BMP1 + 256 * 2 + 320,x
+000A4Fr 3  BD 00 63         lda BMP0 + 256 * 3,x
+000A52r 3  9D 40 A4         sta BMP1 + 256 * 3 + 320,x
+000A55r 3  BD 00 64         lda BMP0 + 256 * 4,x
+000A58r 3  9D 40 A5         sta BMP1 + 256 * 4 + 320,x
+000A5Br 3  BD 00 65         lda BMP0 + 256 * 5,x
+000A5Er 3  9D 40 A6         sta BMP1 + 256 * 5 + 320,x
+000A61r 3  BD 00 66         lda BMP0 + 256 * 6,x
+000A64r 3  9D 40 A7         sta BMP1 + 256 * 6 + 320,x
+000A67r 3  BD 00 67         lda BMP0 + 256 * 7,x
+000A6Ar 3  9D 40 A8         sta BMP1 + 256 * 7 + 320,x
+000A6Dr 3  BD 00 68         lda BMP0 + 256 * 8,x
+000A70r 3  9D 40 A9         sta BMP1 + 256 * 8 + 320,x
+000A73r 3  BD 00 69         lda BMP0 + 256 * 9,x
+000A76r 3  9D 40 AA         sta BMP1 + 256 * 9 + 320,x
+000A79r 3  BD 00 6A         lda BMP0 + 256 * 10,x
+000A7Cr 3  9D 40 AB         sta BMP1 + 256 * 10 + 320,x
+000A7Fr 3  BD 00 6B         lda BMP0 + 256 * 11,x
+000A82r 3  9D 40 AC         sta BMP1 + 256 * 11 + 320,x
+000A85r 3  BD 00 6C         lda BMP0 + 256 * 12,x
+000A88r 3  9D 40 AD         sta BMP1 + 256 * 12 + 320,x
+000A8Br 3  BD 00 6D         lda BMP0 + 256 * 13,x
+000A8Er 3  9D 40 AE         sta BMP1 + 256 * 13 + 320,x
+000A91r 3  BD 00 6E         lda BMP0 + 256 * 14,x
+000A94r 3  9D 40 AF         sta BMP1 + 256 * 14 + 320,x
+000A97r 3  BD 00 6F         lda BMP0 + 256 * 15,x
+000A9Ar 3  9D 40 B0         sta BMP1 + 256 * 15 + 320,x
+000A9Dr 3  BD 00 70         lda BMP0 + 256 * 16,x
+000AA0r 3  9D 40 B1         sta BMP1 + 256 * 16 + 320,x
+000AA3r 3  BD 00 71         lda BMP0 + 256 * 17,x
+000AA6r 3  9D 40 B2         sta BMP1 + 256 * 17 + 320,x
+000AA9r 3  BD 00 72         lda BMP0 + 256 * 18,x
+000AACr 3  9D 40 B3         sta BMP1 + 256 * 18 + 320,x
+000AAFr 3  BD 00 73         lda BMP0 + 256 * 19,x
+000AB2r 3  9D 40 B4         sta BMP1 + 256 * 19 + 320,x
+000AB5r 3  BD 00 74         lda BMP0 + 256 * 20,x
+000AB8r 3  9D 40 B5         sta BMP1 + 256 * 20 + 320,x
+000ABBr 3  BD 00 75         lda BMP0 + 256 * 21,x
+000ABEr 3  9D 40 B6         sta BMP1 + 256 * 21 + 320,x
+000AC1r 3  BD 00 76         lda BMP0 + 256 * 22,x
+000AC4r 3  9D 40 B7         sta BMP1 + 256 * 22 + 320,x
+000AC7r 3  BD 00 77         lda BMP0 + 256 * 23,x
+000ACAr 3  9D 40 B8         sta BMP1 + 256 * 23 + 320,x
+000ACDr 3  BD 00 78         lda BMP0 + 256 * 24,x
+000AD0r 3  9D 40 B9         sta BMP1 + 256 * 24 + 320,x
+000AD3r 3  BD 00 79         lda BMP0 + 256 * 25,x
+000AD6r 3  9D 40 BA         sta BMP1 + 256 * 25 + 320,x
+000AD9r 3  BD 00 7A         lda BMP0 + 256 * 26,x
+000ADCr 3  9D 40 BB         sta BMP1 + 256 * 26 + 320,x
+000ADFr 3  BD 00 7B         lda BMP0 + 256 * 27,x
+000AE2r 3  9D 40 BC         sta BMP1 + 256 * 27 + 320,x
+000AE5r 3  BD 00 7C         lda BMP0 + 256 * 28,x
+000AE8r 3  9D 40 BD         sta BMP1 + 256 * 28 + 320,x
+000AEBr 3  BD 00 7D         lda BMP0 + 256 * 29,x
+000AEEr 3  9D 40 BE         sta BMP1 + 256 * 29 + 320,x
+000AF1r 3  E8               inx
+000AF2r 3  D0 01            bne down_BMP0_to_BMP1b
+000AF4r 3  60                   rts
+000AF5r 3               down_BMP0_to_BMP1b:
+000AF5r 3  4C rr rr         jmp down_BMP0_to_BMP1
+000AF8r 3               
+000AF8r 3               
+000AF8r 3               
+000AF8r 3               ; move 7680 bytes down 320
+000AF8r 3               down_BMP1_to_BMP0:
+000AF8r 3  BD 00 A0         lda BMP1,x
+000AFBr 3  9D 40 61         sta BMP0 + 320,x
+000AFEr 3  BD 00 A1         lda BMP1 + 256 * 1,x
+000B01r 3  9D 40 62         sta BMP0 + 256 * 1 + 320,x
+000B04r 3  BD 00 A2         lda BMP1 + 256 * 2,x
+000B07r 3  9D 40 63         sta BMP0 + 256 * 2 + 320,x
+000B0Ar 3  BD 00 A3         lda BMP1 + 256 * 3,x
+000B0Dr 3  9D 40 64         sta BMP0 + 256 * 3 + 320,x
+000B10r 3  BD 00 A4         lda BMP1 + 256 * 4,x
+000B13r 3  9D 40 65         sta BMP0 + 256 * 4 + 320,x
+000B16r 3  BD 00 A5         lda BMP1 + 256 * 5,x
+000B19r 3  9D 40 66         sta BMP0 + 256 * 5 + 320,x
+000B1Cr 3  BD 00 A6         lda BMP1 + 256 * 6,x
+000B1Fr 3  9D 40 67         sta BMP0 + 256 * 6 + 320,x
+000B22r 3  BD 00 A7         lda BMP1 + 256 * 7,x
+000B25r 3  9D 40 68         sta BMP0 + 256 * 7 + 320,x
+000B28r 3  BD 00 A8         lda BMP1 + 256 * 8,x
+000B2Br 3  9D 40 69         sta BMP0 + 256 * 8 + 320,x
+000B2Er 3  BD 00 A9         lda BMP1 + 256 * 9,x
+000B31r 3  9D 40 6A         sta BMP0 + 256 * 9 + 320,x
+000B34r 3  BD 00 AA         lda BMP1 + 256 * 10,x
+000B37r 3  9D 40 6B         sta BMP0 + 256 * 10 + 320,x
+000B3Ar 3  BD 00 AB         lda BMP1 + 256 * 11,x
+000B3Dr 3  9D 40 6C         sta BMP0 + 256 * 11 + 320,x
+000B40r 3  BD 00 AC         lda BMP1 + 256 * 12,x
+000B43r 3  9D 40 6D         sta BMP0 + 256 * 12 + 320,x
+000B46r 3  BD 00 AD         lda BMP1 + 256 * 13,x
+000B49r 3  9D 40 6E         sta BMP0 + 256 * 13 + 320,x
+000B4Cr 3  BD 00 AE         lda BMP1 + 256 * 14,x
+000B4Fr 3  9D 40 6F         sta BMP0 + 256 * 14 + 320,x
+000B52r 3  BD 00 AF         lda BMP1 + 256 * 15,x
+000B55r 3  9D 40 70         sta BMP0 + 256 * 15 + 320,x
+000B58r 3  BD 00 B0         lda BMP1 + 256 * 16,x
+000B5Br 3  9D 40 71         sta BMP0 + 256 * 16 + 320,x
+000B5Er 3  BD 00 B1         lda BMP1 + 256 * 17,x
+000B61r 3  9D 40 72         sta BMP0 + 256 * 17 + 320,x
+000B64r 3  BD 00 B2         lda BMP1 + 256 * 18,x
+000B67r 3  9D 40 73         sta BMP0 + 256 * 18 + 320,x
+000B6Ar 3  BD 00 B3         lda BMP1 + 256 * 19,x
+000B6Dr 3  9D 40 74         sta BMP0 + 256 * 19 + 320,x
+000B70r 3  BD 00 B4         lda BMP1 + 256 * 20,x
+000B73r 3  9D 40 75         sta BMP0 + 256 * 20 + 320,x
+000B76r 3  BD 00 B5         lda BMP1 + 256 * 21,x
+000B79r 3  9D 40 76         sta BMP0 + 256 * 21 + 320,x
+000B7Cr 3  BD 00 B6         lda BMP1 + 256 * 22,x
+000B7Fr 3  9D 40 77         sta BMP0 + 256 * 22 + 320,x
+000B82r 3  BD 00 B7         lda BMP1 + 256 * 23,x
+000B85r 3  9D 40 78         sta BMP0 + 256 * 23 + 320,x
+000B88r 3  BD 00 B8         lda BMP1 + 256 * 24,x
+000B8Br 3  9D 40 79         sta BMP0 + 256 * 24 + 320,x
+000B8Er 3  BD 00 B9         lda BMP1 + 256 * 25,x
+000B91r 3  9D 40 7A         sta BMP0 + 256 * 25 + 320,x
+000B94r 3  BD 00 BA         lda BMP1 + 256 * 26,x
+000B97r 3  9D 40 7B         sta BMP0 + 256 * 26 + 320,x
+000B9Ar 3  BD 00 BB         lda BMP1 + 256 * 27,x
+000B9Dr 3  9D 40 7C         sta BMP0 + 256 * 27 + 320,x
+000BA0r 3  BD 00 BC         lda BMP1 + 256 * 28,x
+000BA3r 3  9D 40 7D         sta BMP0 + 256 * 28 + 320,x
+000BA6r 3  BD 00 BD         lda BMP1 + 256 * 29,x
+000BA9r 3  9D 40 7E         sta BMP0 + 256 * 29 + 320,x
+000BACr 3  E8               inx
+000BADr 3  D0 01            bne down_BMP1_to_BMP0b
+000BAFr 3  60                   rts
+000BB0r 3               down_BMP1_to_BMP0b:
+000BB0r 3  4C rr rr         jmp down_BMP1_to_BMP0
+000BB3r 3               
+000BB3r 3               
+000BB3r 3               
+000BB3r 2               
+000BB3r 2               ; set up the page based on the current value of A
+000BB3r 2               flip_page:
+000BB3r 2               ; wait for raster line >= 256
+000BB3r 2  AD 11 D0         lda $d011
+000BB6r 2  10 FB            bpl flip_page
+000BB8r 2               
+000BB8r 2               
+000BB8r 2  A9 01            lda #1
+000BBAr 2  4D rr rr         eor current_page
+000BBDr 2  8D rr rr         sta current_page
+000BC0r 2  C9 00            cmp #0
+000BC2r 2  D0 3D            bne flip_page2
+000BC4r 2               
+000BC4r 2               ; display BMP0, draw BMP1
+000BC4r 2  AD 18 D0     	    lda $d018
+000BC7r 2  29 0F        	    and	#%00001111  ; set color memory relative to VIC bank
+000BC9r 2  09 70        	    ora	#%01110000  ; vic bank + $1c00
+000BCBr 2  8D 18 D0     	    sta	$d018
+000BCEr 2               
+000BCEr 2  AD 00 DD             lda	$dd00		; set the VIC bank
+000BD1r 2  29 FC        	    and	#%11111100
+000BD3r 2  09 02        	    ora	#%00000010  ; $4000
+000BD5r 2  8D 00 DD     	    sta	$dd00
+000BD8r 2  A9 00 8D rr          SET_LITERAL16 bmp_src, BMP0
+000BDCr 2  rr A9 60 8D  
+000BE0r 2  rr rr        
+000BE2r 2  A9 00 8D rr          SET_LITERAL16 color_ptr, BMP0_COLOR
+000BE6r 2  rr A9 5C 8D  
+000BEAr 2  rr rr        
+000BECr 2  A9 00 8D rr          SET_LITERAL16 bmp_dst, BMP1
+000BF0r 2  rr A9 A0 8D  
+000BF4r 2  rr rr        
+000BF6r 2  A9 00 8D rr          SET_LITERAL16 color_ptr2, BMP1_COLOR
+000BFAr 2  rr A9 84 8D  
+000BFEr 2  rr rr        
+000C00r 2  60                   rts
+000C01r 2               
+000C01r 2               flip_page2:
+000C01r 2               ; display BMP1, draw BMP0
+000C01r 2  AD 18 D0     	lda $d018           ; set color memory relative to VIC bank
+000C04r 2  29 0F        	and	#%00001111
+000C06r 2  09 10        	ora	#%00010000      ; only vic bank + $0400 works
+000C08r 2  8D 18 D0     	sta	$d018
+000C0Br 2               
+000C0Br 2  AD 00 DD     	lda	$dd00		    ; set the VIC bank
+000C0Er 2  29 FC        	and	#%11111100
+000C10r 2  09 01        	ora	#%00000001      ; $8000
+000C12r 2  8D 00 DD     	sta	$dd00
+000C15r 2               
+000C15r 2  A9 00 8D rr      SET_LITERAL16 bmp_src, BMP1
+000C19r 2  rr A9 A0 8D  
+000C1Dr 2  rr rr        
+000C1Fr 2  A9 00 8D rr      SET_LITERAL16 color_ptr, BMP1_COLOR
+000C23r 2  rr A9 84 8D  
+000C27r 2  rr rr        
+000C29r 2  A9 00 8D rr      SET_LITERAL16 bmp_dst, BMP0
+000C2Dr 2  rr A9 60 8D  
+000C31r 2  rr rr        
+000C33r 2  A9 00 8D rr      SET_LITERAL16 color_ptr2, BMP0_COLOR
+000C37r 2  rr A9 5C 8D  
+000C3Br 2  rr rr        
+000C3Dr 2  60               rts
+000C3Er 2               
+000C3Er 2               
+000C3Er 2               
+000C3Er 2               init_graphics:
+000C3Er 2               ; bitmap mode
+000C3Er 2  A0 BB            ldy	#187
+000C40r 2  8C 11 D0     	sty	$d011
+000C43r 2               
+000C43r 2  AD 02 DD     	lda	$DD02
+000C46r 2  09 03        	ora	#3
+000C48r 2  8D 02 DD     	sta	$DD02		;CIA-2 I/O default value
+000C4Br 2               
+000C4Br 2  20 rr rr         jsr flip_page ; set up the bitmap
+000C4Er 2  20 rr rr         jsr update_pattern ; set up the pattern
+000C51r 2               
+000C51r 2  AD 18 D0     	lda	$d018       ; set bitmap memory relative to VIC bank
+000C54r 2  29 F0        	and	#%11110000
+000C56r 2  09 08        	ora	#%00001000  ; vic bank + $2000
+000C58r 2  8D 18 D0     	sta	$d018
+000C5Br 2               
+000C5Br 2               ; set color memory to white pen on black paper (also clears sprite pointers) on screen 1
+000C5Br 2  A9 10        	lda	#$10
+000C5Dr 2  A2 00        	ldx	#$00
+000C5Fr 2               loopcol2:
+000C5Fr 2  9D 00 84         sta	BMP1_COLOR,x
+000C62r 2  9D 00 85     	sta	BMP1_COLOR+$100,x
+000C65r 2  9D 00 86     	sta	BMP1_COLOR+$200,x
+000C68r 2  9D 00 87     	sta	BMP1_COLOR+$300,x
+000C6Br 2  9D 00 5C         sta	BMP0_COLOR,x
+000C6Er 2  9D 00 5D     	sta	BMP0_COLOR+$100,x
+000C71r 2  9D 00 5E     	sta	BMP0_COLOR+$200,x
+000C74r 2  9D 00 5F     	sta	BMP0_COLOR+$300,x
+000C77r 2  E8           	inx
+000C78r 2  D0 E5        	bne	loopcol2
+000C7Ar 2               
+000C7Ar 2               
+000C7Ar 2               
+000C7Ar 2               
+000C7Ar 2               update_pattern:
+000C7Ar 2               ; change test pattern every 8 steps
+000C7Ar 2  EE rr rr         inc step
+000C7Dr 2  AD rr rr         lda step
+000C80r 2  29 02            and #2
+000C82r 2  F0 3D            beq use_pattern2
+000C84r 2               ; rewind starting address by x
+000C84r 2  A9 rr 8D rr          SET_LITERAL16 rcolumn_src + 1, (pattern2 - 248)
+000C88r 2  rr A9 rr 8D  
+000C8Cr 2  rr rr        
+000C8Er 2  A9 rr 8D rr          SET_LITERAL16 lcolumn_src + 1, (pattern2 - 248)
+000C92r 2  rr A9 rr 8D  
+000C96r 2  rr rr        
+000C98r 2  A9 rr 8D rr          SET_LITERAL16 uchar_src1 + 1, (pattern2 - 248)
+000C9Cr 2  rr A9 rr 8D  
+000CA0r 2  rr rr        
+000CA2r 2  A9 rr 8D rr          SET_LITERAL16 uchar_src2 + 1, (pattern2 - 248)
+000CA6r 2  rr A9 rr 8D  
+000CAAr 2  rr rr        
+000CACr 2  A9 rr 8D rr          SET_LITERAL16 dchar_src1 + 1, (pattern2 - 248)
+000CB0r 2  rr A9 rr 8D  
+000CB4r 2  rr rr        
+000CB6r 2  A9 rr 8D rr          SET_LITERAL16 dchar_src2 + 1, (pattern2 - 248)
+000CBAr 2  rr A9 rr 8D  
+000CBEr 2  rr rr        
+000CC0r 2  60                   rts
+000CC1r 2               
+000CC1r 2               use_pattern2:
+000CC1r 2               ; rewind starting address by x
+000CC1r 2  A9 rr 8D rr      SET_LITERAL16 rcolumn_src + 1, (pattern1 - 248)
+000CC5r 2  rr A9 rr 8D  
+000CC9r 2  rr rr        
+000CCBr 2  A9 rr 8D rr      SET_LITERAL16 lcolumn_src + 1, (pattern1 - 248)
+000CCFr 2  rr A9 rr 8D  
+000CD3r 2  rr rr        
+000CD5r 2  A9 rr 8D rr      SET_LITERAL16 uchar_src1 + 1, (pattern1 - 248)
+000CD9r 2  rr A9 rr 8D  
+000CDDr 2  rr rr        
+000CDFr 2  A9 rr 8D rr      SET_LITERAL16 uchar_src2 + 1, (pattern1 - 248)
+000CE3r 2  rr A9 rr 8D  
+000CE7r 2  rr rr        
+000CE9r 2  A9 rr 8D rr      SET_LITERAL16 dchar_src1 + 1, (pattern1 - 248)
+000CEDr 2  rr A9 rr 8D  
+000CF1r 2  rr rr        
+000CF3r 2  A9 rr 8D rr      SET_LITERAL16 dchar_src2 + 1, (pattern1 - 248)
+000CF7r 2  rr A9 rr 8D  
+000CFBr 2  rr rr        
+000CFDr 2  60               rts
+000CFEr 2               
+000CFEr 2               
+000CFEr 2               scroll_up:
+000CFEr 2  A2 00            ldx #0
+000D00r 2               
+000D00r 2               
+000D00r 2               ; choose page flipping direction
+000D00r 2  AD rr rr         lda bmp_src + 1
+000D03r 2  C9 A0            cmp #>BMP1
+000D05r 2  F0 06            beq scroll_up2
+000D07r 2  20 rr rr             jsr up_BMP0_to_BMP1
+000D0Ar 2  4C rr rr             jmp scroll_up3
+000D0Dr 2               
+000D0Dr 2               scroll_up2:
+000D0Dr 2  20 rr rr             jsr up_BMP1_to_BMP0
+000D10r 2               
+000D10r 2               
+000D10r 2               scroll_up3:
+000D10r 2               ; draw new row
+000D10r 2               ; copy dst address
+000D10r 2  18 A9 00 6D              ADD_LITERAL16 uchar_dst1 + 1, bmp_dst, (320 * 24)
+000D14r 2  rr rr 8D rr  
+000D18r 2  rr A9 1E 6D  
+000D21r 2               ; use Y as src index.  Offset it to avoid a compare
+000D21r 2  A0 F8                    ldy #248
+000D23r 2               uchar_src1:
+000D23r 2  B9 rr rr                 lda pattern1 - 248,y
+000D26r 2               uchar_dst1:
+000D26r 2  9D 00 A0                 sta BMP1,x
+000D29r 2  C8                       iny
+000D2Ar 2  D0 02                    bne uchar_loop2
+000D2Cr 2  A0 F8                        ldy #248
+000D2Er 2               uchar_loop2:
+000D2Er 2  E8                       inx
+000D2Fr 2  D0 F2                    bne uchar_src1
+000D31r 2               
+000D31r 2               ; advance 256 bytes - 192
+000D31r 2  18 A9 40 6D              ADD_LITERAL16 uchar_dst2 + 1, bmp_dst, (320 * 24 + 256 - 192)
+000D35r 2  rr rr 8D rr  
+000D39r 2  rr A9 1E 6D  
+000D42r 2               ; offset X to avoid a compare
+000D42r 2  A2 C0                    ldx #192
+000D44r 2               ; use Y as src index.  Offset it to avoid a compare
+000D44r 2  A0 F8                    ldy #248
+000D46r 2               uchar_src2:
+000D46r 2  B9 rr rr                 lda pattern1 - 248,y
+000D49r 2               uchar_dst2:
+000D49r 2  9D 00 A0                 sta BMP1,x
+000D4Cr 2  C8                       iny
+000D4Dr 2  D0 02                    bne uchar_loop3
+000D4Fr 2  A0 F8                        ldy #248
+000D51r 2               uchar_loop3:
+000D51r 2  E8                           inx
+000D52r 2  D0 F2                        bne uchar_src2
+000D54r 2  60                               rts  ; donechak
+000D55r 2               
+000D55r 2               
+000D55r 2               
+000D55r 2               
+000D55r 2               scroll_down:
+000D55r 2  A2 00            ldx #0
+000D57r 2               
+000D57r 2               ; choose page flipping direction
+000D57r 2  AD rr rr         lda bmp_src + 1
+000D5Ar 2  C9 A0            cmp #>BMP1
+000D5Cr 2  F0 06            beq scroll_down2
+000D5Er 2  20 rr rr             jsr down_BMP0_to_BMP1
+000D61r 2  4C rr rr             jmp scroll_down3
+000D64r 2               
+000D64r 2               scroll_down2:
+000D64r 2  20 rr rr             jsr down_BMP1_to_BMP0
+000D67r 2               
+000D67r 2               
+000D67r 2               scroll_down3:
+000D67r 2               ; draw new row
+000D67r 2               ; copy dst address
+000D67r 2  AD rr rr 8D              COPY_REG16 dchar_dst1 + 1, bmp_dst
+000D6Br 2  rr rr AD rr  
+000D6Fr 2  rr 8D rr rr  
+000D73r 2               ; use Y as src index.  Offset it to avoid a compare
+000D73r 2  A0 F8                    ldy #248
+000D75r 2               dchar_src1:
+000D75r 2  B9 rr rr                 lda pattern1 - 248,y
+000D78r 2               dchar_dst1:
+000D78r 2  9D 00 A0                 sta BMP1,x
+000D7Br 2  C8                       iny
+000D7Cr 2  D0 02                    bne dchar_loop2
+000D7Er 2  A0 F8                        ldy #248
+000D80r 2               dchar_loop2:
+000D80r 2  E8                       inx
+000D81r 2  D0 F2                    bne dchar_src1
+000D83r 2               
+000D83r 2               ; advance 256 bytes - 192
+000D83r 2  18 A9 40 6D              ADD_LITERAL16 dchar_dst2 + 1, bmp_dst, (256 - 192)
+000D87r 2  rr rr 8D rr  
+000D8Br 2  rr A9 00 6D  
+000D94r 2               ; offset X to avoid a compare
+000D94r 2  A2 C0                    ldx #192
+000D96r 2               ; use Y as src index.  Offset it to avoid a compare
+000D96r 2  A0 F8                    ldy #248
+000D98r 2               dchar_src2:
+000D98r 2  B9 rr rr                 lda pattern1 - 248,y
+000D9Br 2               dchar_dst2:
+000D9Br 2  9D 00 A0                 sta BMP1,x
+000D9Er 2  C8                       iny
+000D9Fr 2  D0 02                    bne dchar_loop3
+000DA1r 2  A0 F8                        ldy #248
+000DA3r 2               dchar_loop3:
+000DA3r 2  E8                           inx
+000DA4r 2  D0 F2                        bne dchar_src2
+000DA6r 2  60                               rts  ; donechak
+000DA7r 2               
+000DA7r 2               
+000DA7r 2               
+000DA7r 2               
+000DA7r 2               scroll_left:
+000DA7r 2               ; shift bitmap left 8 pixels
+000DA7r 2               
+000DA7r 2  A2 00            ldx #0
+000DA9r 2               ; choose page flipping direction
+000DA9r 2  AD rr rr         lda bmp_src + 1
+000DACr 2  C9 A0            cmp #>BMP1
+000DAEr 2  F0 0B            beq scroll_left2
+000DB0r 2  20 rr rr             jsr left_BMP0_to_BMP1_256
+000DB3r 2               ; offset X to avoid a compare
+000DB3r 2  A2 C8                ldx #200
+000DB5r 2  20 rr rr             jsr left_BMP0_to_BMP1_64
+000DB8r 2  4C rr rr             jmp scroll_left3
+000DBBr 2               
+000DBBr 2               scroll_left2:
+000DBBr 2  20 rr rr             jsr left_BMP1_to_BMP0_256
+000DBEr 2               ; offset X to avoid a compare
+000DBEr 2  A2 C8                ldx #200
+000DC0r 2  20 rr rr             jsr left_BMP1_to_BMP0_64
+000DC3r 2  4C rr rr             jmp scroll_left3
+000DC6r 2               
+000DC6r 2               
+000DC6r 2               scroll_left3:
+000DC6r 2               ; right column
+000DC6r 2  A0 E7                ldy #256 - 25 ; -25
+000DC8r 2               ; copy dst address + 320 - 8 - 248
+000DC8r 2  18 A9 40 6D          ADD_LITERAL16 rcolumn_dst + 1, bmp_dst, 64
+000DCCr 2  rr rr 8D rr  
+000DD0r 2  rr A9 00 6D  
+000DD9r 2               rcolumn_loop:
+000DD9r 2               ; offset X to avoid a compare
+000DD9r 2  A2 F8                ldx #248
+000DDBr 2               ; copy the new character into the last column
+000DDBr 2               rcolumn_src:
+000DDBr 2               ; rewind starting address by x
+000DDBr 2  BD rr rr             lda pattern1 - 248,x
+000DDEr 2               rcolumn_dst:
+000DDEr 2  9D 00 A0             sta BMP1,x
+000DE1r 2  E8                   inx
+000DE2r 2  D0 F7                bne rcolumn_src
+000DE4r 2               
+000DE4r 2               ; add 320 to advance the row
+000DE4r 2  18 A9 40 6D              ADD_LITERAL16 rcolumn_dst + 1, rcolumn_dst + 1, 320
+000DE8r 2  rr rr 8D rr  
+000DECr 2  rr A9 01 6D  
+000DF5r 2  C8                       iny ; wrap row around to 0 to detect completion
+000DF6r 2  D0 E1                    bne rcolumn_loop
+000DF8r 2  60                           rts ; donechak
+000DF9r 2               
+000DF9r 2               
+000DF9r 2               
+000DF9r 2               scroll_right:
+000DF9r 2               ; shift bitmap right 8 pixels
+000DF9r 2  A2 00            ldx #0
+000DFBr 2               
+000DFBr 2               ; choose page flipping direction
+000DFBr 2  AD rr rr         lda bmp_src + 1
+000DFEr 2  C9 A0            cmp #>BMP1
+000E00r 2  F0 0B            beq scroll_right2
+000E02r 2  20 rr rr             jsr right_BMP0_to_BMP1_256
+000E05r 2               ; offset X to avoid a compare
+000E05r 2  A2 C8                ldx #200
+000E07r 2  20 rr rr             jsr right_BMP0_to_BMP1_64
+000E0Ar 2  4C rr rr             jmp scroll_right3
+000E0Dr 2               
+000E0Dr 2               scroll_right2:
+000E0Dr 2  20 rr rr             jsr right_BMP1_to_BMP0_256
+000E10r 2               ; offset X to avoid a compare
+000E10r 2  A2 C8                ldx #200
+000E12r 2  20 rr rr             jsr right_BMP1_to_BMP0_64
+000E15r 2  4C rr rr             jmp scroll_right3
+000E18r 2               
+000E18r 2               
+000E18r 2               scroll_right3:
+000E18r 2               ; left column
+000E18r 2  A0 E7                ldy #256 - 25 ; -25
+000E1Ar 2               ; copy dst address - 248
+000E1Ar 2  38 AD rr rr          SUB_LITERAL16 lcolumn_dst + 1, bmp_dst, 248
+000E1Er 2  E9 F8 8D rr  
+000E22r 2  rr AD rr rr  
+000E2Br 2               
+000E2Br 2               lcolumn_loop:
+000E2Br 2               ; offset X to avoid a compare
+000E2Br 2  A2 F8                    ldx #248
+000E2Dr 2               ; copy the new character into the last column
+000E2Dr 2               lcolumn_src:
+000E2Dr 2  BD rr rr                 lda pattern1 - 248,x
+000E30r 2               lcolumn_dst:
+000E30r 2  9D 00 A0                 sta BMP1,x
+000E33r 2  E8                       inx
+000E34r 2  D0 F7                    bne lcolumn_src
+000E36r 2               
+000E36r 2               ; add 320 to address to advance the row
+000E36r 2  18 A9 40 6D                  ADD_LITERAL16 lcolumn_dst + 1, lcolumn_dst + 1, 320
+000E3Ar 2  rr rr 8D rr  
+000E3Er 2  rr A9 01 6D  
+000E47r 2  C8                           iny ; wrap row around to 0 to detect completion
+000E48r 2  D0 E1                        bne lcolumn_loop
+000E4Ar 2  60                               rts  ; donechak
+000E4Br 2               
+000E4Br 2               
+000E4Br 2               
+000E4Br 2               
+000E4Br 1               
+000E4Br 1               .endproc
+000E4Br 1               
+000E4Br 1               

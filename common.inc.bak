@@ -1,0 +1,166 @@
+
+; printer device number
+PRINTER = 4
+
+; macros
+.macro SET_LITERAL8 address, value
+    lda #value
+    sta address
+.endmacro
+
+.macro SET_LITERAL16 address, value
+    lda #<value
+    sta address
+    lda #>value
+    sta address + 1
+.endmacro
+
+.macro COPY_REG16 dst, src
+    lda src
+    sta dst
+    lda src + 1
+    sta dst + 1
+.endmacro
+
+; dst = a + b
+.macro ADD_REG16 a_hi, a_lo, b_hi, b_lo, dst_hi, dst_lo
+    clc
+    lda a_lo
+    adc b_lo
+    sta dst_lo
+    lda a_hi
+    adc b_hi
+    sta dst_hi
+.endmacro
+
+; dst = literal + src
+.macro ADD_LITERAL16 dst, src, literal
+    clc
+    lda #<literal ; low
+    adc src
+    sta dst
+    lda #>literal ; high
+    adc src + 1
+    sta dst + 1
+.endmacro
+
+; dst = src - literal
+.macro SUB_LITERAL16 dst, src, literal
+    sec
+    lda src
+    sbc #<literal ; low
+    sta dst
+    lda src + 1
+    sbc #>literal ; high
+    sta dst + 1
+.endmacro
+
+; branch if address content >= literal
+.macro BRANCH_GREATEREQUAL16 address, literal, where
+    sec
+    lda address
+    sbc #<literal ; low
+    lda address + 1
+    sbc #>literal ; high
+    bcs where
+.endmacro
+
+.macro PRINT_TEXT string
+    SET_LITERAL16 printmod + 1, string ; self modifying code
+    jsr print
+.endmacro
+
+.macro PRINT_HEX16 address
+    ldy address + 1
+    jsr print_hex8
+    ldy address
+    jsr print_hex8
+.endmacro
+
+.macro PRINT_HEX8 address
+    ldy address
+    jsr print_hex8
+    lda #$20 ; space
+    jsr CHROUT
+.endmacro
+
+.macro INIT_DEBUG
+; open the printer page 338
+    lda #7 ; logical number
+    ldx #PRINTER ; device number
+    ldy #7 ; secondary address
+    jsr SETLFS
+
+    jsr OPEN
+
+; direct CHROUT to the printer
+    ldx #PRINTER ; logical number
+    jsr CHKOUT
+.endmacro
+
+.macro SELECT_PRINTER
+; direct CIOUT to the printer
+    lda #PRINTER
+    jsr LISTEN
+.endmacro
+
+; setup timer for profiling
+.macro INIT_PROFILER
+    lda #$ff   ; reset CIA 2 timer A
+    sta d2t1h
+    sta d2t2l  ; reset CIA 2 timer B
+    lda #$11
+    sta d2cra  ; start timer A
+    lda #$51
+    sta d2crb  ; run timer B off of timer A
+.endmacro
+
+.macro GET_TIME dst
+    lda #$ff
+    sbc d2t1h ; get CIA 2 timer A
+    sta dst
+    lda #$ff
+    sbc d2t2l ; get CIA 2 timer B
+    sta dst + 1
+    lda #$ff ; reset the clock
+    sta d2t1h
+    sta d2t2l
+    lda #$11
+    sta d2cra
+    lda #$51
+    sta d2crb
+.endmacro
+
+print:
+    SELECT_PRINTER
+    ldx #$00          ; initialize X register for indexing
+printmod:
+    lda $ffff,x       ; load the character from the message
+    beq print2        ; if character is zero, we are done
+        jsr CIOUT    ; call CIOUT routine to send the character to the serial port
+        inx           ; increment X register
+        jmp printmod  ; repeat the loop
+print2:
+    rts
+
+; print the value of Y.  Overwrites A, X
+hex_table:
+    .byte "0123456789abcdef"
+print_hex8:
+    tya
+    and #$f0
+    clc
+    ror A
+    ror A
+    ror A
+    ror A
+    tax
+    lda hex_table,x
+    jsr CIOUT
+    tya
+    and #$0f
+    tax
+    lda hex_table,x
+    jsr CIOUT
+    rts
+

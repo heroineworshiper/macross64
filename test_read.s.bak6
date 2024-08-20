@@ -1,0 +1,371 @@
+.include        "cbm_kernal.inc"
+
+; secondary & logical addresses for the world drive
+CONTROL = 15
+DATA = 2
+WORLD_DRIVE = 8
+; sector buffer for testing
+SECTOR_DST = $c000
+; start of loader in drive memory
+LOADER_START = $0400
+; bytes per m-w command.  42-6
+LOADER_FRAGMENT = 34
+
+.segment "DATA"
+temp1: .res 1
+temp2: .res 1
+temp3: .res 1
+sector_offset: .res 1
+pointer: .res 2
+counter: .res 2
+
+; macros
+.macro SET_LITERAL8 address, value
+    lda #value
+    sta address
+.endmacro
+
+.macro SET_LITERAL16 address, value
+    lda #<value
+    sta address
+    lda #>value
+    sta address + 1
+.endmacro
+
+.macro COPY_REG16 dst, src
+    lda src
+    sta dst
+    lda src + 1
+    sta dst + 1
+.endmacro
+
+; dst = a + b
+.macro ADD_REG16 a_hi, a_lo, b_hi, b_lo, dst_hi, dst_lo
+    clc
+    lda a_lo
+    adc b_lo
+    sta dst_lo
+    lda a_hi
+    adc b_hi
+    sta dst_hi
+.endmacro
+
+; dst = literal + src
+.macro ADD_LITERAL16 dst, src, literal
+    clc
+    lda #<literal ; low
+    adc src
+    sta dst
+    lda #>literal ; high
+    adc src + 1
+    sta dst + 1
+.endmacro
+
+; dst = src - literal
+.macro SUB_LITERAL16 dst, src, literal
+    sec
+    lda src
+    sbc #<literal ; low
+    sta dst
+    lda src + 1
+    sbc #>literal ; high
+    sta dst + 1
+.endmacro
+
+; branch if address content >= literal
+.macro BRANCH_GREATEREQUAL16 address, literal, where
+    sec
+    lda address
+    sbc #<literal ; low
+    lda address + 1
+    sbc #>literal ; high
+    bcs where
+.endmacro
+
+; branch if address content < literal
+.macro BRANCH_LESS16 address, literal, where
+    sec
+    lda address
+    sbc #<literal ; low
+    lda address + 1
+    sbc #>literal ; high
+    bcc where
+.endmacro
+
+.macro PRINT_TEXT string
+    SET_LITERAL16 printmod + 1, string ; self modifying code
+    jsr print
+.endmacro
+
+.macro PRINT_HEX16 address
+    ldy address + 1
+    jsr print_hex8
+    ldy address
+    jsr print_hex8
+.endmacro
+
+.macro PRINT_HEX8 address
+    ldy address
+    jsr print_hex8
+    lda #' '
+    jsr CHROUT
+.endmacro
+
+
+
+.macro SELECT_CONTROL
+    lda #WORLD_DRIVE ; write to the command channel
+    jsr LISTEN
+    lda #(CONTROL | $60) ; secondary address needs to be ored with 0x60
+    jsr SECOND
+.endmacro
+
+
+
+.segment	"START"
+
+    .byte $01, $08, $0b, $08, $13, $02, $9e, $32, $30, $36, $31, $00, $00, $00
+
+.segment	"CODE"
+mane:
+
+; print something
+    PRINT_TEXT welcome
+
+    PRINT_TEXT loading
+; open control channel
+    lda #CONTROL ; logical number
+    ldx #WORLD_DRIVE       ; drive number
+    ldy #CONTROL ; secondary address
+    jsr SETLFS
+    lda #0
+    ldx #0
+    ldy #0
+    jsr SETNAM
+    jsr OPEN
+
+
+    
+
+; load the fastloader
+    SET_LITERAL16 pointer, LOADER_START
+loader_loop:
+
+    SELECT_CONTROL
+    lda #'m'
+    jsr CIOUT
+    lda #'-'
+    jsr CIOUT
+    lda #'w'
+    jsr CIOUT
+    lda pointer ; send dst address
+    jsr CIOUT
+    lda pointer + 1
+    jsr CIOUT
+    lda #LOADER_FRAGMENT ; send number of bytes
+    jsr CIOUT
+
+; send 34 bytes
+    ldx #0
+loader_mod1:
+    lda fastload_start,x ; load form src address
+    jsr CIOUT
+    inx
+    cpx #LOADER_FRAGMENT
+    bne loader_mod1
+        jsr UNLSN ; execute the command
+; next 34 bytes
+        ADD_LITERAL16 loader_mod1 + 1, loader_mod1 + 1, LOADER_FRAGMENT
+        ADD_LITERAL16 pointer, pointer, LOADER_FRAGMENT
+        BRANCH_GREATEREQUAL16 loader_mod1 + 1, fastload_end, loader_done
+            jmp loader_loop
+loader_done:
+; read back the fastloader
+    SET_LITERAL16 pointer, LOADER_START
+    PRINT_TEXT verifying_text
+
+verify_loop:
+    SELECT_CONTROL
+    lda #'m'
+    jsr CIOUT
+    lda #'-'
+    jsr CIOUT
+    lda #'r'
+    jsr CIOUT
+    lda pointer
+    jsr CIOUT
+    lda pointer + 1
+    jsr CIOUT
+    lda #8 ; number of bytes
+    jsr CIOUT
+    jsr UNLSN ; execute the command
+
+    lda #8
+    sta temp2
+verify_loop2:
+    lda #WORLD_DRIVE ; read from the control channel
+    jsr TALK
+    lda #(CONTROL | $60) ; secondary address needs to be ored with 0x60
+    jsr TKSA
+    
+    jsr ACPTR
+    sta temp1
+    PRINT_HEX8 temp1
+verify_mod:
+    lda fastload_start ; load from src address
+    cmp temp1 ; compare with readback
+    bne verify_fail
+
+verify_continue:
+; next verify address
+        ADD_LITERAL16 verify_mod + 1, verify_mod + 1, 1
+        dec temp2
+        bne verify_loop2
+;            lda #$0d ; line feed
+;            jsr CHROUT
+
+                ADD_LITERAL16 pointer, pointer, 8
+                BRANCH_GREATEREQUAL16 verify_mod + 1, fastload_end, verify_exit
+                    jmp verify_loop
+verify_fail:
+; mismatch after end of loader
+    BRANCH_GREATEREQUAL16 verify_mod + 1, fastload_end, verify_exit
+; really failed
+        PRINT_TEXT verify_fail_text
+        jmp verify_exit
+;        jmp verify_continue
+
+verify_exit:
+    lda #$0d
+    jsr CHROUT
+    rts
+
+
+
+welcome:
+    .byte "welcome to macross64"
+    .byte $0d, $00    ; null terminator for the message
+
+loading:
+    .byte "loading loader"
+    .byte $0d, $00    ; null terminator for the message
+sector_done:
+    .byte "sector done"
+    .byte $0a, $00    ; null terminator for the message
+running:
+    .byte "running loader"
+    .byte $0d, $00    ; null terminator for the message
+loader_started:
+    .byte "loader started"
+    .byte $0d, $00    ; null terminator for the message
+reading1:
+    .byte "reading1"
+    .byte $0a, $00    ; null terminator for the message
+
+reading2:
+    .byte "reading2"
+    .byte $0a, $00    ; null terminator for the message
+
+reading3:
+    .byte "reading3"
+    .byte $0a, $00    ; null terminator for the message
+
+time1:
+    .byte "time1: "
+    .byte $00    ; null terminator for the message
+time2:
+    .byte "time2: "
+    .byte $00    ; null terminator for the message
+time3:
+    .byte "time3: "
+    .byte $00    ; null terminator for the message
+done:
+    .byte "done"
+    .byte $0a, $0a, $00    ; null terminator for the message
+testing_printer:
+    .byte "testing printer"
+    .byte $0a, $0a, $00    ; null terminator for the message
+nodev_text:
+    .byte "nodev"
+    .byte $0a, $00    ; null terminator for the message
+verify_fail_text:
+    .byte "verify failed"
+    .byte $0d, $00
+verifying_text:
+    .byte "verifying"
+    .byte $0d, $00
+
+
+print:
+    ldx #$00          ; initialize X register for indexing
+printmod:
+    lda $ffff,x       ; load the character from the message
+    beq print2        ; if character is zero, we are done
+        jsr CHROUT     ; call CIOUT routine to send the character to the serial port
+        inx           ; increment X register
+        jmp printmod  ; repeat the loop
+print2:
+    rts
+
+; print the value of Y.  Overwrites A, X
+hex_table:
+    .byte "0123456789abcdef"
+print_hex8:
+    tya
+    and #$f0
+    clc
+    ror A
+    ror A
+    ror A
+    ror A
+    tax
+    lda hex_table,x
+    jsr CHROUT
+    tya
+    and #$0f
+    tax
+    lda hex_table,x
+    jsr CHROUT
+    rts
+
+
+
+fastload_start:
+;.include "fastload.inc"
+    .byte $01, $02, $03, $04, $05, $06, $07, $08
+    .byte $09, $0a, $0b, $0c, $0d, $0e, $0f, $10
+    .byte $01, $02, $03, $04, $05, $06, $07, $08
+    .byte $09, $0a, $0b, $0c, $0d, $0e, $0f, $10
+    .byte $01, $02, $03, $04, $05, $06, $07, $08
+    .byte $09, $0a, $0b, $0c, $0d, $0e, $0f, $10
+    .byte $01, $02, $03, $04, $05, $06, $07, $08
+    .byte $09, $0a, $0b, $0c, $0d, $0e, $0f, $10
+    .byte $01, $02, $03, $04, $05, $06, $07, $08
+    .byte $09, $0a, $0b, $0c, $0d, $0e, $0f, $10
+    .byte $01, $02, $03, $04, $05, $06, $07, $08
+    .byte $09, $0a, $0b, $0c, $0d, $0e, $0f, $10
+    .byte $01, $02, $03, $04, $05, $06, $07, $08
+    .byte $09, $0a, $0b, $0c, $0d, $0e, $0f, $10
+    .byte $01, $02, $03, $04, $05, $06, $07, $08
+    .byte $09, $0a, $0b, $0c, $0d, $0e, $0f, $10
+    .byte $01, $02, $03, $04, $05, $06, $07, $08
+    .byte $09, $0a, $0b, $0c, $0d, $0e, $0f, $10
+    .byte $01, $02, $03, $04, $05, $06, $07, $08
+    .byte $09, $0a, $0b, $0c, $0d, $0e, $0f, $10
+    .byte $01, $02, $03, $04, $05, $06, $07, $08
+    .byte $09, $0a, $0b, $0c, $0d, $0e, $0f, $10
+    .byte $01, $02, $03, $04, $05, $06, $07, $08
+    .byte $09, $0a, $0b, $0c, $0d, $0e, $0f, $10
+    .byte $01, $02, $03, $04, $05, $06, $07, $08
+    .byte $09, $0a, $0b, $0c, $0d, $0e, $0f, $10
+    .byte $01, $02, $03, $04, $05, $06, $07, $08
+    .byte $09, $0a, $0b, $0c, $0d, $0e, $0f, $10
+
+fastload_end:
+
+nop
+nop
+nop
+nop
+
+

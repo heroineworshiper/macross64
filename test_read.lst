@@ -1,0 +1,963 @@
+ca65 V2.19 - N/A
+Main file   : test_read.s
+Current file: test_read.s
+
+000000r 1               .include        "cbm_kernal.inc"
+000000r 2               ;
+000000r 2               ; Olli Savia <ops@iki.fi>
+000000r 2               ; Greg King
+000000r 2               ;
+000000r 2               ; Commodore-compatibles Kernal functions
+000000r 2               ;
+000000r 2               
+000000r 2               .if .def(__CX16__)
+000000r 2                 ; CX16 extended jump table
+000000r 2                 KBDBUF_PEEK                   := $FEBD
+000000r 2                 KBDBUF_GET_MODIFIERS          := $FEC0
+000000r 2                 KBDBUF_PUT                    := $FEC3
+000000r 2                 I2C_READ_BYTE                 := $FEC6
+000000r 2                 I2C_WRITE_BYTE                := $FEC9
+000000r 2                 CX_MONITOR                    := $FECC
+000000r 2                 ENTROPY_GET                   := $FECF
+000000r 2                 CONSOLE_SET_PAGE_MSG          := $FED5
+000000r 2                 CONSOLE_PUT_IMAGE             := $FED8
+000000r 2                 CONSOLE_INIT                  := $FEDB
+000000r 2                 CONSOLE_PUT_CHAR              := $FEDE
+000000r 2                 CONSOLE_GET_CHAR              := $FEE1
+000000r 2                 MEMORY_FILL                   := $FEE4
+000000r 2                 MEMORY_COPY                   := $FEE7
+000000r 2                 MEMORY_CRC                    := $FEEA
+000000r 2                 MEMORY_DECOMPRESS             := $FEED
+000000r 2                 SPRITE_SET_IMAGE              := $FEF0
+000000r 2                 SPRITE_SET_POSITION           := $FEF3
+000000r 2                 FB_INIT                       := $FEF6
+000000r 2                 FB_GET_INFO                   := $FEF9
+000000r 2                 FB_SET_PALETTE                := $FEFC
+000000r 2                 FB_CURSOR_POSITION            := $FEFF
+000000r 2                 FB_CURSOR_NEXT_LINE           := $FF02
+000000r 2                 FB_GET_PIXEL                  := $FF05
+000000r 2                 FB_GET_PIXELS                 := $FF08
+000000r 2                 FB_SET_PIXEL                  := $FF0B
+000000r 2                 FB_SET_PIXELS                 := $FF0E
+000000r 2                 FB_SET_8_PIXELS               := $FF11
+000000r 2                 FB_SET_8_PIXELS_OPAQUE        := $FF14
+000000r 2                 FB_FILL_PIXELS                := $FF17
+000000r 2                 FB_FILTER_PIXELS              := $FF1A
+000000r 2                 FB_MOVE_PIXELS                := $FF1D
+000000r 2                 GRAPH_INIT                    := $FF20
+000000r 2                 GRAPH_CLEAR                   := $FF23
+000000r 2                 GRAPH_SET_WINDOW              := $FF26
+000000r 2                 GRAPH_SET_COLORS              := $FF29
+000000r 2                 GRAPH_DRAW_LINE               := $FF2C
+000000r 2                 GRAPH_DRAW_RECT               := $FF2F
+000000r 2                 GRAPH_MOVE_RECT               := $FF32
+000000r 2                 GRAPH_DRAW_OVAL               := $FF35
+000000r 2                 GRAPH_DRAW_IMAGE              := $FF38
+000000r 2                 GRAPH_SET_FONT                := $FF3B
+000000r 2                 GRAPH_GET_CHAR_SIZE           := $FF3E
+000000r 2                 GRAPH_PUT_CHAR                := $FF41
+000000r 2                 MULTI_ACPTR                   := $FF44
+000000r 2                 RESTORE_BASIC                 := $FF47
+000000r 2                 CLOCK_SET_DATE_TIME           := $FF4D
+000000r 2                 CLOCK_GET_DATE_TIME           := $FF50
+000000r 2                 JOYSTICK_SCAN                 := $FF53
+000000r 2                 JOYSTICK_GET                  := $FF56
+000000r 2                 SCREEN_MODE                   := $FF5F
+000000r 2                 SCREEN_SET_CHARSET            := $FF62
+000000r 2                 MOUSE_CONFIG                  := $FF68
+000000r 2                 MOUSE_GET                     := $FF6B
+000000r 2               .endif
+000000r 2               
+000000r 2               .if .def(__C128__)
+000000r 2                 ; C128 extended jump table
+000000r 2                 C64MODE      := $FF4D
+000000r 2                 SWAPPER      := $FF5F
+000000r 2                 SETBNK       := $FF68
+000000r 2               .endif
+000000r 2               
+000000r 2               .if .def(__C128__) || .def(__CX16__)
+000000r 2                 ; Extended jump table
+000000r 2                 CLSALL       := $FF4A
+000000r 2                 LKUPLA       := $FF59
+000000r 2                 LKUPSA       := $FF5C
+000000r 2                 PFKEY        := $FF65
+000000r 2                 JSRFAR       := $FF6E
+000000r 2                 INDFET       := $FF74
+000000r 2                 INDSTA       := $FF77
+000000r 2                 INDCMP       := $FF7A
+000000r 2                 PRIMM        := $FF7D
+000000r 2               .endif
+000000r 2               
+000000r 2               .if .def(__C64__) || .def(__C128__) || .def(__C16__) || .def(__CX16__)
+000000r 2                 CINT         := $FF81
+000000r 2                 IOINIT       := $FF84
+000000r 2                 RAMTAS       := $FF87
+000000r 2               .elseif .def(__VIC20__)
+000000r 2                 CINT         := $E518         ; No entries are in the Kernal jump table of the VIC-20 for these three (3) functions.
+000000r 2                 IOINIT       := $FDF9         ; The entries for these functions have been set to point directly to the functions
+000000r 2                 RAMTAS       := $FD8D         ; in the Kernal, to maintain compatibility with the other Commodore platforms.
+000000r 2               .elseif .def(__CBM510__) || .def(__CBM610__)
+000000r 2                 IOINIT       := $FF7B
+000000r 2                 CINT         := $FF7E
+000000r 2               .endif
+000000r 2               
+000000r 2               .if .def(__VIC20__) || .def(__C64__) || .def(__C128__) || .def(__C16__) || .def(__CX16__)
+000000r 2                 RESTOR       := $FF8A
+000000r 2                 VECTOR       := $FF8D
+000000r 2               .elseif .def(__CBM510__) || .def(__CBM610__)
+000000r 2                 VECTOR       := $FF84
+000000r 2                 RESTOR       := $FF87
+000000r 2               .endif
+000000r 2               
+000000r 2               .if .def(__CBM510__) || .def(__CBM610__) || .def(__VIC20__) || .def(__C64__) || .def(__C128__) || .def(__C16__) || .def(__CX16__)
+000000r 2                 SETMSG       := $FF90
+000000r 2                 SECOND       := $FF93
+000000r 2                 TKSA         := $FF96
+000000r 2                 MEMTOP       := $FF99
+000000r 2                 MEMBOT       := $FF9C
+000000r 2                 SCNKEY       := $FF9F
+000000r 2                 SETTMO       := $FFA2
+000000r 2                 ACPTR        := $FFA5
+000000r 2                 CIOUT        := $FFA8
+000000r 2                 UNTLK        := $FFAB
+000000r 2                 UNLSN        := $FFAE
+000000r 2                 LISTEN       := $FFB1
+000000r 2                 TALK         := $FFB4
+000000r 2                 READST       := $FFB7
+000000r 2                 SETLFS       := $FFBA
+000000r 2                 SETNAM       := $FFBD
+000000r 2                 OPEN         := $FFC0
+000000r 2                 CLOSE        := $FFC3
+000000r 2               .endif
+000000r 2               
+000000r 2               ; Available on all platforms including PET
+000000r 2               CHKIN          := $FFC6
+000000r 2               CKOUT          := $FFC9
+000000r 2               CHKOUT         := $FFC9
+000000r 2               CLRCH          := $FFCC
+000000r 2               CLRCHN         := $FFCC
+000000r 2               BASIN          := $FFCF
+000000r 2               CHRIN          := $FFCF
+000000r 2               BSOUT          := $FFD2
+000000r 2               CHROUT         := $FFD2
+000000r 2               
+000000r 2               .if .def(__CBM510__) || .def(__CBM610__) || .def(__VIC20__) || .def(__C64__) || .def(__C128__) || .def(__C16__) || .def(__CX16__)
+000000r 2                 LOAD         := $FFD5
+000000r 2                 SAVE         := $FFD8
+000000r 2                 SETTIM       := $FFDB
+000000r 2                 RDTIM        := $FFDE
+000000r 2               .endif
+000000r 2               
+000000r 2               ; Available on all platforms including PET
+000000r 2               STOP           := $FFE1
+000000r 2               GETIN          := $FFE4
+000000r 2               CLALL          := $FFE7
+000000r 2               UDTIM          := $FFEA
+000000r 2               
+000000r 2               .if .def(__CBM510__) || .def(__CBM610__) || .def(__VIC20__) || .def(__C64__) || .def(__C128__) || .def(__C16__) || .def(__CX16__)
+000000r 2                 SCREEN       := $FFED
+000000r 2                 PLOT         := $FFF0
+000000r 2                 IOBASE       := $FFF3
+000000r 2               .endif
+000000r 2               
+000000r 2               ; ---------------------------------------------------------------------------
+000000r 2               ; Kernal routines, direct entries
+000000r 2               ;
+000000r 2               ; Unlike the above, these are not standard functions with entries in the jump
+000000r 2               ; table. They do not exist in all Kernals, and where they do the entry point is
+000000r 2               ; specific to that particular machine and possibly even Kernal version.
+000000r 2               ;
+000000r 2               ; This list is not comprehensive: missing items for particular machines
+000000r 2               ; should be added as needed.
+000000r 2               ;
+000000r 2               ; UPDCRAMPTR: Updates the color RAM pointer to match the screen RAM pointer.
+000000r 2               ;
+000000r 2               
+000000r 2               .if .def(__VIC20__)
+000000r 2                 CLRSCR       := $E55F
+000000r 2                 KBDREAD      := $E5CF
+000000r 2                 UPDCRAMPTR   := $EAB2
+000000r 2               .elseif .def(__C64__)
+000000r 2                 CLRSCR       := $E544
+000000r 2                 KBDREAD      := $E5B4
+000000r 2                 NMIEXIT      := $FEBC
+000000r 2                 UPDCRAMPTR   := $EA24
+000000r 2               .elseif .def(__C128__)
+000000r 2                 CLRSCR       := $C142
+000000r 2                 KBDREAD      := $C006
+000000r 2                 NMIEXIT      := $FF33
+000000r 2                 NEWLINE      := $C363
+000000r 2                 PRINT        := $C322
+000000r 2                 CURS_SET     := $CD57
+000000r 2                 CURS_ON      := $CD6F
+000000r 2                 CURS_OFF     := $CD9F
+000000r 2               .elseif .def(__C16__)
+000000r 2                 CLRSCR       := $D88B
+000000r 2                 KBDREAD      := $D8C1
+000000r 2               .endif
+000000r 2               
+000000r 1               
+000000r 1               ; secondary & logical addresses for the world drive
+000000r 1               CONTROL = 15
+000000r 1               DATA = 2
+000000r 1               WORLD_DRIVE = 9
+000000r 1               ; sector buffer for testing
+000000r 1               SECTOR_DST = $c000
+000000r 1               ; start of loader in drive memory
+000000r 1               LOADER_START = $0400
+000000r 1               ; bytes per m-w command.  42-6
+000000r 1               LOADER_FRAGMENT = 34
+000000r 1               
+000000r 1               .segment "DATA"
+000000r 1  xx           temp1: .res 1
+000001r 1  xx           temp2: .res 1
+000002r 1  xx           temp3: .res 1
+000003r 1  xx           sector_offset: .res 1
+000004r 1  xx xx        pointer: .res 2
+000006r 1  xx xx        counter: .res 2
+000008r 1               ; times
+000008r 1  xx xx        profile1: .res 2
+00000Ar 1  xx xx        profile2: .res 2
+00000Cr 1  xx xx        profile3: .res 2
+00000Er 1  xx xx        profile4: .res 2
+000010r 1               
+000010r 1               ; from kernal source
+000010r 1               cia1	=$dc00                  ;device1 6526 (page1 irq)
+000010r 1               d1pra	=cia1+0
+000010r 1               colm	=d1pra                  ;keyboard matrix
+000010r 1               d1prb	=cia1+1
+000010r 1               rows	=d1prb                  ;keyboard matrix
+000010r 1               d1ddra	=cia1+2
+000010r 1               d1ddrb	=cia1+3
+000010r 1               d1t1l	=cia1+4
+000010r 1               d1t1h	=cia1+5
+000010r 1               d1t2l	=cia1+6
+000010r 1               d1t2h	=cia1+7
+000010r 1               d1tod1	=cia1+8
+000010r 1               d1tods	=cia1+9
+000010r 1               d1todm	=cia1+10
+000010r 1               d1todh	=cia1+11
+000010r 1               d1sdr	=cia1+12
+000010r 1               d1icr	=cia1+13
+000010r 1               d1cra	=cia1+14
+000010r 1               d1crb	=cia1+15
+000010r 1               
+000010r 1               cia2	=$dd00                  ;device2 6526 (page2 nmi)
+000010r 1               d2pra	=cia2+0 ; the data port
+000010r 1               CLK_OUT := $10 ; inverse of line voltage
+000010r 1               DAT_OUT := $20 ; inverse of line voltage
+000010r 1               CLK_IN  := $40 ; direct line voltage
+000010r 1               DAT_IN  := $80 ; direct line voltage
+000010r 1               VIC_OUT := $03 ; bits need to be on to keep VIC happy
+000010r 1               ATN_OUT := $08 ; inverse of ATN
+000010r 1               
+000010r 1               d2prb	=cia2+1
+000010r 1               d2ddra	=cia2+2
+000010r 1               d2ddrb	=cia2+3
+000010r 1               d2t1l	=cia2+4
+000010r 1               d2t1h	=cia2+5
+000010r 1               d2t2l	=cia2+6
+000010r 1               d2t2h	=cia2+7
+000010r 1               d2tod1	=cia2+8
+000010r 1               d2tods	=cia2+9
+000010r 1               d2todm	=cia2+10
+000010r 1               d2todh	=cia2+11
+000010r 1               d2sdr	=cia2+12
+000010r 1               d2icr	=cia2+13
+000010r 1               d2cra	=cia2+14
+000010r 1               d2crb	=cia2+15
+000010r 1               
+000010r 1               .segment	"CODE"
+000000r 1               
+000000r 1               
+000000r 1               ; printer device number
+000000r 1               PRINTER = 4
+000000r 1               
+000000r 1               ; macros
+000000r 1               .macro SET_LITERAL8 address, value
+000000r 1                   lda #value
+000000r 1                   sta address
+000000r 1               .endmacro
+000000r 1               
+000000r 1               .macro SET_LITERAL16 address, value
+000000r 1                   lda #<value
+000000r 1                   sta address
+000000r 1                   lda #>value
+000000r 1                   sta address + 1
+000000r 1               .endmacro
+000000r 1               
+000000r 1               .macro COPY_REG16 dst, src
+000000r 1                   lda src
+000000r 1                   sta dst
+000000r 1                   lda src + 1
+000000r 1                   sta dst + 1
+000000r 1               .endmacro
+000000r 1               
+000000r 1               ; dst = a + b
+000000r 1               .macro ADD_REG16 a_hi, a_lo, b_hi, b_lo, dst_hi, dst_lo
+000000r 1                   clc
+000000r 1                   lda a_lo
+000000r 1                   adc b_lo
+000000r 1                   sta dst_lo
+000000r 1                   lda a_hi
+000000r 1                   adc b_hi
+000000r 1                   sta dst_hi
+000000r 1               .endmacro
+000000r 1               
+000000r 1               ; dst = literal + src
+000000r 1               .macro ADD_LITERAL16 dst, src, literal
+000000r 1                   clc
+000000r 1                   lda #<literal ; low
+000000r 1                   adc src
+000000r 1                   sta dst
+000000r 1                   lda #>literal ; high
+000000r 1                   adc src + 1
+000000r 1                   sta dst + 1
+000000r 1               .endmacro
+000000r 1               
+000000r 1               ; dst = src - literal
+000000r 1               .macro SUB_LITERAL16 dst, src, literal
+000000r 1                   sec
+000000r 1                   lda src
+000000r 1                   sbc #<literal ; low
+000000r 1                   sta dst
+000000r 1                   lda src + 1
+000000r 1                   sbc #>literal ; high
+000000r 1                   sta dst + 1
+000000r 1               .endmacro
+000000r 1               
+000000r 1               ; branch if address content >= literal
+000000r 1               .macro BRANCH_GREATEREQUAL16 address, literal, where
+000000r 1                   sec
+000000r 1                   lda address
+000000r 1                   sbc #<literal ; low
+000000r 1                   lda address + 1
+000000r 1                   sbc #>literal ; high
+000000r 1                   bcs where
+000000r 1               .endmacro
+000000r 1               
+000000r 1               ; branch if address content < literal
+000000r 1               .macro BRANCH_LESS16 address, literal, where
+000000r 1                   sec
+000000r 1                   lda address
+000000r 1                   sbc #<literal ; low
+000000r 1                   lda address + 1
+000000r 1                   sbc #>literal ; high
+000000r 1                   bcc where
+000000r 1               .endmacro
+000000r 1               
+000000r 1               .macro PRINT_TEXT string
+000000r 1                   SET_LITERAL16 printmod + 1, string ; self modifying code
+000000r 1                   jsr print
+000000r 1               .endmacro
+000000r 1               
+000000r 1               .macro PRINT_HEX16 address
+000000r 1                   ldy address + 1
+000000r 1                   jsr print_hex8
+000000r 1                   ldy address
+000000r 1                   jsr print_hex8
+000000r 1               .endmacro
+000000r 1               
+000000r 1               .macro PRINT_HEX8 address
+000000r 1                   ldy address
+000000r 1                   jsr print_hex8
+000000r 1                   lda #' '
+000000r 1                   jsr CHROUT
+000000r 1               .endmacro
+000000r 1               
+000000r 1               
+000000r 1               .macro SELECT_PRINTER
+000000r 1               ; direct CIOUT to the printer
+000000r 1                   lda #PRINTER
+000000r 1                   jsr LISTEN
+000000r 1               .endmacro
+000000r 1               
+000000r 1               ; setup timer for profiling
+000000r 1               .macro INIT_PROFILER
+000000r 1                   lda #$ff   ; reset CIA 2 timer A
+000000r 1                   sta d2t1h
+000000r 1                   sta d2t2l  ; reset CIA 2 timer B
+000000r 1                   lda #$11
+000000r 1                   sta d2cra  ; start timer A
+000000r 1                   lda #$51
+000000r 1                   sta d2crb  ; run timer B off of timer A
+000000r 1               .endmacro
+000000r 1               
+000000r 1               .macro GET_TIME dst
+000000r 1                   lda #$ff
+000000r 1                   sbc d2t1h ; get CIA 2 timer A
+000000r 1                   sta dst
+000000r 1                   lda #$ff
+000000r 1                   sbc d2t2l ; get CIA 2 timer B
+000000r 1                   sta dst + 1
+000000r 1                   lda #$ff ; reset the clock
+000000r 1                   sta d2t1h
+000000r 1                   sta d2t2l
+000000r 1                   lda #$11
+000000r 1                   sta d2cra
+000000r 1                   lda #$51
+000000r 1                   sta d2crb
+000000r 1               .endmacro
+000000r 1               
+000000r 1               
+000000r 1               
+000000r 1               .macro SELECT_CONTROL
+000000r 1                   lda #WORLD_DRIVE ; write to the command channel
+000000r 1                   jsr LISTEN
+000000r 1                   lda #(CONTROL | $60) ; secondary address needs to be ored with 0x60
+000000r 1                   jsr SECOND
+000000r 1               .endmacro
+000000r 1               
+000000r 1               .macro SELECT_DATA
+000000r 1                   lda #WORLD_DRIVE ; read from the data channel
+000000r 1                   jsr TALK
+000000r 1                   lda #(DATA | $60) ; secondary address needs to be ored with 0x60
+000000r 1                   jsr TKSA
+000000r 1               .endmacro
+000000r 1               
+000000r 1               ;set clock line high (inverted)
+000000r 1               .macro CLKHI
+000000r 1               	lda d2pra
+000000r 1               	and #($ff-CLK_OUT)
+000000r 1               	sta d2pra
+000000r 1               .endmacro
+000000r 1               
+000000r 1               ;set clock line low  (inverted)
+000000r 1               .macro CLKLO
+000000r 1               	lda d2pra
+000000r 1               	ora #CLK_OUT
+000000r 1               	sta d2pra
+000000r 1               .endmacro
+000000r 1               
+000000r 1               ;set data line high (inverted)
+000000r 1               .macro DATHI
+000000r 1               	lda d2pra
+000000r 1               	and #($ff-DAT_OUT)
+000000r 1               	sta d2pra
+000000r 1               .endmacro
+000000r 1               
+000000r 1               ;set data line low (inverted)
+000000r 1               .macro DATLO
+000000r 1               	lda d2pra
+000000r 1               	ora #DAT_OUT
+000000r 1               	sta d2pra
+000000r 1               .endmacro
+000000r 1               
+000000r 1               ;set ATN line high (inverted)
+000000r 1               .macro ATNHI
+000000r 1               	lda d2pra
+000000r 1               	and #($ff-ATN_OUT)
+000000r 1               	sta d2pra
+000000r 1               .endmacro
+000000r 1               
+000000r 1               ;set ATN line low (inverted)
+000000r 1               .macro ATNLO
+000000r 1               	lda d2pra
+000000r 1               	ora #ATN_OUT
+000000r 1               	sta d2pra
+000000r 1               .endmacro
+000000r 1               
+000000r 1               
+000000r 1               
+000000r 1               
+000000r 1               
+000000r 1  01 08 0B 08      .byte $01, $08, $0b, $08, $13, $02, $9e, $32, $30, $36, $31, $00, $00, $00
+000004r 1  13 02 9E 32  
+000008r 1  30 36 31 00  
+00000Er 1               
+00000Er 1               mane:
+00000Er 1               ; print something
+00000Er 1  A9 rr 8D rr      PRINT_TEXT welcome
+000012r 1  rr A9 rr 8D  
+000016r 1  rr rr 20 rr  
+00001Br 1               
+00001Br 1               FASTLOAD_SIZE := (fastload_end - fastload_start)
+00001Br 1               
+00001Br 1  A0 01            ldy #>FASTLOAD_SIZE
+00001Dr 1  20 rr rr         jsr print_hex8
+000020r 1  A0 77            ldy #<FASTLOAD_SIZE
+000022r 1  20 rr rr         jsr print_hex8
+000025r 1  A9 20            lda #' '
+000027r 1  20 D2 FF         jsr CHROUT
+00002Ar 1               
+00002Ar 1  A0 rr            ldy #>fastload_end
+00002Cr 1  20 rr rr         jsr print_hex8
+00002Fr 1  A0 rr            ldy #<fastload_end
+000031r 1  20 rr rr         jsr print_hex8
+000034r 1  A9 20            lda #' '
+000036r 1  20 D2 FF         jsr CHROUT
+000039r 1  A0 rr            ldy #>temp1
+00003Br 1  20 rr rr         jsr print_hex8
+00003Er 1  A0 rr            ldy #<temp1
+000040r 1  20 rr rr         jsr print_hex8
+000043r 1  A9 20            lda #' '
+000045r 1  20 D2 FF         jsr CHROUT
+000048r 1               
+000048r 1  A9 rr 8D rr      PRINT_TEXT loading
+00004Cr 1  rr A9 rr 8D  
+000050r 1  rr rr 20 rr  
+000055r 1               ; open control channel
+000055r 1  A9 0F            lda #CONTROL ; logical number
+000057r 1  A2 09            ldx #WORLD_DRIVE       ; drive number
+000059r 1  A0 0F            ldy #CONTROL ; secondary address
+00005Br 1  20 BA FF         jsr SETLFS
+00005Er 1  A9 00            lda #0
+000060r 1  A2 00            ldx #0
+000062r 1  A0 00            ldy #0
+000064r 1  20 BD FF         jsr SETNAM
+000067r 1  20 C0 FF         jsr OPEN
+00006Ar 1               
+00006Ar 1               ;    ldx #3
+00006Ar 1               ;    jsr CHKOUT
+00006Ar 1               
+00006Ar 1               
+00006Ar 1               
+00006Ar 1               ; load the fastloader
+00006Ar 1  A9 00 8D rr      SET_LITERAL16 pointer, LOADER_START
+00006Er 1  rr A9 04 8D  
+000072r 1  rr rr        
+000074r 1               loader_loop:
+000074r 1               ;    SELECT_PRINTER
+000074r 1               ;    PRINT_HEX16 loader_mod1 + 1
+000074r 1               ;    lda #$0a
+000074r 1               ;    jsr CIOUT
+000074r 1               
+000074r 1  A9 09 20 B1      SELECT_CONTROL
+000078r 1  FF A9 6F 20  
+00007Cr 1  93 FF        
+00007Er 1  A9 4D            lda #'m'
+000080r 1  20 A8 FF         jsr CIOUT
+000083r 1  A9 2D            lda #'-'
+000085r 1  20 A8 FF         jsr CIOUT
+000088r 1  A9 57            lda #'w'
+00008Ar 1  20 A8 FF         jsr CIOUT
+00008Dr 1  AD rr rr         lda pointer ; send dst address
+000090r 1  20 A8 FF         jsr CIOUT
+000093r 1  AD rr rr         lda pointer + 1
+000096r 1  20 A8 FF         jsr CIOUT
+000099r 1  A9 22            lda #LOADER_FRAGMENT ; send number of bytes
+00009Br 1  20 A8 FF         jsr CIOUT
+00009Er 1               
+00009Er 1               ; send 34 bytes
+00009Er 1  A2 00            ldx #0
+0000A0r 1               loader_mod1:
+0000A0r 1  BD rr rr         lda fastload_start,x ; load form src address
+0000A3r 1  20 A8 FF         jsr CIOUT
+0000A6r 1  E8               inx
+0000A7r 1  E0 22            cpx #LOADER_FRAGMENT
+0000A9r 1  D0 F5            bne loader_mod1
+0000ABr 1  20 AE FF             jsr UNLSN ; execute the command
+0000AEr 1               ; next 34 bytes
+0000AEr 1  18 A9 22 6D          ADD_LITERAL16 loader_mod1 + 1, loader_mod1 + 1, LOADER_FRAGMENT
+0000B2r 1  rr rr 8D rr  
+0000B6r 1  rr A9 00 6D  
+0000BFr 1  18 A9 22 6D          ADD_LITERAL16 pointer, pointer, LOADER_FRAGMENT
+0000C3r 1  rr rr 8D rr  
+0000C7r 1  rr A9 00 6D  
+0000D0r 1  38 AD rr rr          BRANCH_GREATEREQUAL16 loader_mod1 + 1, fastload_end, loader_done
+0000D4r 1  E9 rr AD rr  
+0000D8r 1  rr E9 rr B0  
+0000DDr 1  4C rr rr                 jmp loader_loop
+0000E0r 1               loader_done:
+0000E0r 1               ; read back the fastloader
+0000E0r 1  A9 00 8D rr      SET_LITERAL16 pointer, LOADER_START
+0000E4r 1  rr A9 04 8D  
+0000E8r 1  rr rr        
+0000EAr 1  A9 rr 8D rr      PRINT_TEXT verifying_text
+0000EEr 1  rr A9 rr 8D  
+0000F2r 1  rr rr 20 rr  
+0000F7r 1               
+0000F7r 1               verify_loop:
+0000F7r 1  A9 09 20 B1      SELECT_CONTROL
+0000FBr 1  FF A9 6F 20  
+0000FFr 1  93 FF        
+000101r 1  A9 4D            lda #'m'
+000103r 1  20 A8 FF         jsr CIOUT
+000106r 1  A9 2D            lda #'-'
+000108r 1  20 A8 FF         jsr CIOUT
+00010Br 1  A9 52            lda #'r'
+00010Dr 1  20 A8 FF         jsr CIOUT
+000110r 1  AD rr rr         lda pointer
+000113r 1  20 A8 FF         jsr CIOUT
+000116r 1  AD rr rr         lda pointer + 1
+000119r 1  20 A8 FF         jsr CIOUT
+00011Cr 1  A9 08            lda #8 ; number of bytes
+00011Er 1  20 A8 FF         jsr CIOUT
+000121r 1  20 AE FF         jsr UNLSN ; execute the command
+000124r 1               
+000124r 1  A9 08            lda #8
+000126r 1  8D rr rr         sta temp2
+000129r 1               verify_loop2:
+000129r 1  A9 09            lda #WORLD_DRIVE ; read from the control channel
+00012Br 1  20 B4 FF         jsr TALK
+00012Er 1  A9 6F            lda #(CONTROL | $60) ; secondary address needs to be ored with 0x60
+000130r 1  20 96 FF         jsr TKSA
+000133r 1               
+000133r 1  20 A5 FF         jsr ACPTR
+000136r 1  8D rr rr         sta temp1
+000139r 1  AC rr rr 20      PRINT_HEX8 temp1
+00013Dr 1  rr rr A9 20  
+000141r 1  20 D2 FF     
+000144r 1               verify_mod:
+000144r 1  AD rr rr         lda fastload_start ; load from src address
+000147r 1  CD rr rr         cmp temp1 ; compare with readback
+00014Ar 1  D0 3C            bne verify_fail
+00014Cr 1               
+00014Cr 1               verify_continue:
+00014Cr 1               ; next verify address
+00014Cr 1  18 A9 01 6D          ADD_LITERAL16 verify_mod + 1, verify_mod + 1, 1
+000150r 1  rr rr 8D rr  
+000154r 1  rr A9 00 6D  
+00015Dr 1  CE rr rr             dec temp2
+000160r 1  D0 C7                bne verify_loop2
+000162r 1  A9 0D                    lda #$0d ; line feed
+000164r 1  20 D2 FF                 jsr CHROUT
+000167r 1               
+000167r 1  18 A9 08 6D                  ADD_LITERAL16 pointer, pointer, 8
+00016Br 1  rr rr 8D rr  
+00016Fr 1  rr A9 00 6D  
+000178r 1  38 AD rr rr                  BRANCH_GREATEREQUAL16 verify_mod + 1, fastload_end, verify_exit
+00017Cr 1  E9 rr AD rr  
+000180r 1  rr E9 rr B0  
+000185r 1  4C rr rr                         jmp verify_loop
+000188r 1               verify_fail:
+000188r 1               ; mismatch after end of loader
+000188r 1  38 AD rr rr      BRANCH_GREATEREQUAL16 verify_mod + 1, fastload_end, verify_exit
+00018Cr 1  E9 rr AD rr  
+000190r 1  rr E9 rr B0  
+000195r 1               ; really failed
+000195r 1  A9 rr 8D rr          PRINT_TEXT verify_fail_text
+000199r 1  rr A9 rr 8D  
+00019Dr 1  rr rr 20 rr  
+0001A2r 1  4C rr rr             jmp verify_exit
+0001A5r 1               ;        jmp verify_continue
+0001A5r 1               
+0001A5r 1               verify_exit:
+0001A5r 1  A9 0D            lda #$0d
+0001A7r 1  20 D2 FF         jsr CHROUT
+0001AAr 1  60               rts
+0001ABr 1               
+0001ABr 1               
+0001ABr 1               fastload_start:
+0001ABr 1               .include "fastload.inc"
+0001ABr 2  78 20 E1 04      .byte $78, $20, $e1, $04, $a9, $08, $8d, $00
+0001AFr 2  A9 08 8D 00  
+0001B3r 2  18 A0 64 20      .byte $18, $a0, $64, $20, $d9, $04, $88, $d0
+0001B7r 2  D9 04 88 D0  
+0001BBr 2  FA A9 00 8D      .byte $fa, $a9, $00, $8d, $00, $18, $a0, $68
+0001BFr 2  00 18 A0 68  
+0001C3r 2  20 24 05 A0      .byte $20, $24, $05, $a0, $65, $20, $24, $05
+0001C7r 2  65 20 24 05  
+0001CBr 2  A0 6C 20 24      .byte $a0, $6c, $20, $24, $05, $a0, $6c, $20
+0001CFr 2  05 A0 6C 20  
+0001D3r 2  24 05 A0 6F      .byte $24, $05, $a0, $6f, $20, $24, $05, $a0
+0001D7r 2  20 24 05 A0  
+0001DBr 2  0A 20 24 05      .byte $0a, $20, $24, $05, $a0, $00, $20, $24
+0001DFr 2  A0 00 20 24  
+0001E3r 2  05 20 EA 04      .byte $05, $20, $ea, $04, $4c, $f3, $04, $a2
+0001E7r 2  4C F3 04 A2  
+0001EBr 2  10 AD 00 18      .byte $10, $ad, $00, $18, $29, $84, $c9, $84
+0001EFr 2  29 84 C9 84  
+0001F3r 2  D0 F7 AD 00      .byte $d0, $f7, $ad, $00, $18, $29, $84, $c9
+0001F7r 2  18 29 84 C9  
+0001FBr 2  80 D0 F7 18      .byte $80, $d0, $f7, $18, $ad, $00, $18, $29
+0001FFr 2  AD 00 18 29  
+000203r 2  01 D0 01 38      .byte $01, $d0, $01, $38, $66, $06, $66, $07
+000207r 2  66 06 66 07  
+00020Br 2  CA D0 DE A9      .byte $ca, $d0, $de, $a9, $00, $85, $f9, $20
+00020Fr 2  00 85 F9 20  
+000213r 2  EA 04 4C F3      .byte $ea, $04, $4c, $f3, $04, $a9, $08, $8d
+000217r 2  04 A9 08 8D  
+00021Br 2  00 18 58 20      .byte $00, $18, $58, $20, $86, $d5, $78, $a9
+00021Fr 2  86 D5 78 A9  
+000223r 2  00 8D 00 18      .byte $00, $8d, $00, $18, $a6, $f9, $bd, $00
+000227r 2  A6 F9 BD 00  
+00022Br 2  03 49 03 48      .byte $03, $49, $03, $48, $4a, $4a, $4a, $4a
+00022Fr 2  4A 4A 4A 4A  
+000233r 2  AA BC C9 04      .byte $aa, $bc, $c9, $04, $a2, $00, $8e, $00
+000237r 2  A2 00 8E 00  
+00023Br 2  18 68 29 0F      .byte $18, $68, $29, $0f, $aa, $bd, $c9, $04
+00023Fr 2  AA BD C9 04  
+000243r 2  48 AD 00 18      .byte $48, $ad, $00, $18, $29, $85, $c9, $80
+000247r 2  29 85 C9 80  
+00024Br 2  D0 F7 68 8D      .byte $d0, $f7, $68, $8d, $00, $18, $0a, $29
+00024Fr 2  00 18 0A 29  
+000253r 2  0F 8D 00 18      .byte $0f, $8d, $00, $18, $98, $ea, $8d, $00
+000257r 2  98 EA 8D 00  
+00025Br 2  18 0A 29 0F      .byte $18, $0a, $29, $0f, $8d, $00, $18, $20
+00025Fr 2  8D 00 18 20  
+000263r 2  AE E9 E6 F9      .byte $ae, $e9, $e6, $f9, $d0, $be, $a9, $00
+000267r 2  D0 BE A9 00  
+00026Br 2  8D 00 18 20      .byte $8d, $00, $18, $20, $e1, $04, $4c, $11
+00026Fr 2  E1 04 4C 11  
+000273r 2  04 0F 07 0D      .byte $04, $0f, $07, $0d, $05, $0b, $03, $09
+000277r 2  05 0B 03 09  
+00027Br 2  01 0E 06 0C      .byte $01, $0e, $06, $0c, $04, $0a, $02, $08
+00027Fr 2  04 0A 02 08  
+000283r 2  00 8A A2 B8      .byte $00, $8a, $a2, $b8, $ca, $d0, $fd, $aa
+000287r 2  CA D0 FD AA  
+00028Br 2  60 AD 00 1C      .byte $60, $ad, $00, $1c, $29, $f7, $8d, $00
+00028Fr 2  29 F7 8D 00  
+000293r 2  1C 60 AD 00      .byte $1c, $60, $ad, $00, $1c, $09, $08, $8d
+000297r 2  1C 09 08 8D  
+00029Br 2  00 1C 60 4C      .byte $00, $1c, $60, $4c, $f3, $04, $30, $31
+00029Fr 2  F3 04 30 31  
+0002A3r 2  32 33 34 35      .byte $32, $33, $34, $35, $36, $37, $38, $39
+0002A7r 2  36 37 38 39  
+0002ABr 2  61 62 63 64      .byte $61, $62, $63, $64, $65, $66, $85, $05
+0002AFr 2  65 66 85 05  
+0002B3r 2  29 F0 18 6A      .byte $29, $f0, $18, $6a, $6a, $6a, $6a, $aa
+0002B7r 2  6A 6A 6A AA  
+0002BBr 2  BD F6 04 A8      .byte $bd, $f6, $04, $a8, $20, $24, $05, $a5
+0002BFr 2  20 24 05 A5  
+0002C3r 2  05 29 0F AA      .byte $05, $29, $0f, $aa, $bd, $f6, $04, $a8
+0002C7r 2  BD F6 04 A8  
+0002CBr 2  20 24 05 60      .byte $20, $24, $05, $60, $ad, $00, $18, $29
+0002CFr 2  AD 00 18 29  
+0002D3r 2  01 D0 F9 A2      .byte $01, $d0, $f9, $a2, $08, $98, $6a, $a8
+0002D7r 2  08 98 6A A8  
+0002DBr 2  90 0D AD 00      .byte $90, $0d, $ad, $00, $18, $29, $fd, $09
+0002DFr 2  18 29 FD 09  
+0002E3r 2  08 8D 00 18      .byte $08, $8d, $00, $18, $4c, $47, $05, $ad
+0002E7r 2  4C 47 05 AD  
+0002EBr 2  00 18 09 0A      .byte $00, $18, $09, $0a, $8d, $00, $18, $20
+0002EFr 2  8D 00 18 20  
+0002F3r 2  6E 05 EA EA      .byte $6e, $05, $ea, $ea, $ea, $ea, $ea, $ea
+0002F7r 2  EA EA EA EA  
+0002FBr 2  EA EA AD 00      .byte $ea, $ea, $ad, $00, $18, $29, $f7, $8d
+0002FFr 2  18 29 F7 8D  
+000303r 2  00 18 20 6E      .byte $00, $18, $20, $6e, $05, $ea, $ea, $ea
+000307r 2  05 EA EA EA  
+00030Br 2  EA EA EA EA      .byte $ea, $ea, $ea, $ea, $ea, $ca, $d0, $c5
+00030Fr 2  EA CA D0 C5  
+000313r 2  A9 00 8D 00      .byte $a9, $00, $8d, $00, $18, $60, $ad, $00
+000317r 2  18 60 AD 00  
+00031Br 2  18 CD 00 18      .byte $18, $cd, $00, $18, $d0, $f8, $60
+00031Fr 2  D0 F8 60     
+000322r 2               
+000322r 1               fastload_end:
+000322r 1               
+000322r 1               
+000322r 1               welcome:
+000322r 1  57 45 4C 43      .byte "welcome to macross64"
+000326r 1  4F 4D 45 20  
+00032Ar 1  54 4F 20 4D  
+000336r 1  0D 00            .byte $0d, $00    ; null terminator for the message
+000338r 1               
+000338r 1               loading:
+000338r 1  4C 4F 41 44      .byte "loading loader"
+00033Cr 1  49 4E 47 20  
+000340r 1  4C 4F 41 44  
+000346r 1  0D 00            .byte $0d, $00    ; null terminator for the message
+000348r 1               sector_done:
+000348r 1  53 45 43 54      .byte "sector done"
+00034Cr 1  4F 52 20 44  
+000350r 1  4F 4E 45     
+000353r 1  0A 00            .byte $0a, $00    ; null terminator for the message
+000355r 1               running:
+000355r 1  52 55 4E 4E      .byte "running loader"
+000359r 1  49 4E 47 20  
+00035Dr 1  4C 4F 41 44  
+000363r 1  0D 00            .byte $0d, $00    ; null terminator for the message
+000365r 1               loader_started:
+000365r 1  4C 4F 41 44      .byte "loader started"
+000369r 1  45 52 20 53  
+00036Dr 1  54 41 52 54  
+000373r 1  0D 00            .byte $0d, $00    ; null terminator for the message
+000375r 1               reading1:
+000375r 1  52 45 41 44      .byte "reading1"
+000379r 1  49 4E 47 31  
+00037Dr 1  0A 00            .byte $0a, $00    ; null terminator for the message
+00037Fr 1               
+00037Fr 1               reading2:
+00037Fr 1  52 45 41 44      .byte "reading2"
+000383r 1  49 4E 47 32  
+000387r 1  0A 00            .byte $0a, $00    ; null terminator for the message
+000389r 1               
+000389r 1               reading3:
+000389r 1  52 45 41 44      .byte "reading3"
+00038Dr 1  49 4E 47 33  
+000391r 1  0A 00            .byte $0a, $00    ; null terminator for the message
+000393r 1               
+000393r 1               time1:
+000393r 1  54 49 4D 45      .byte "time1: "
+000397r 1  31 3A 20     
+00039Ar 1  00               .byte $00    ; null terminator for the message
+00039Br 1               time2:
+00039Br 1  54 49 4D 45      .byte "time2: "
+00039Fr 1  32 3A 20     
+0003A2r 1  00               .byte $00    ; null terminator for the message
+0003A3r 1               time3:
+0003A3r 1  54 49 4D 45      .byte "time3: "
+0003A7r 1  33 3A 20     
+0003AAr 1  00               .byte $00    ; null terminator for the message
+0003ABr 1               done:
+0003ABr 1  44 4F 4E 45      .byte "done"
+0003AFr 1  0A 0A 00         .byte $0a, $0a, $00    ; null terminator for the message
+0003B2r 1               testing_printer:
+0003B2r 1  54 45 53 54      .byte "testing printer"
+0003B6r 1  49 4E 47 20  
+0003BAr 1  50 52 49 4E  
+0003C1r 1  0A 0A 00         .byte $0a, $0a, $00    ; null terminator for the message
+0003C4r 1               nodev_text:
+0003C4r 1  4E 4F 44 45      .byte "nodev"
+0003C8r 1  56           
+0003C9r 1  0A 00            .byte $0a, $00    ; null terminator for the message
+0003CBr 1               verify_fail_text:
+0003CBr 1  56 45 52 49      .byte "verify failed"
+0003CFr 1  46 59 20 46  
+0003D3r 1  41 49 4C 45  
+0003D8r 1  0D 00            .byte $0d, $00
+0003DAr 1               verifying_text:
+0003DAr 1  56 45 52 49      .byte "verifying"
+0003DEr 1  46 59 49 4E  
+0003E2r 1  47           
+0003E3r 1  0D 00            .byte $0d, $00
+0003E5r 1               
+0003E5r 1               data_name:
+0003E5r 1  23               .byte "#"
+0003E6r 1               
+0003E6r 1               sector_name:
+0003E6r 1  55 31 20 32      .byte "u1 2 0 1 0"
+0003EAr 1  20 30 20 31  
+0003EEr 1  20 30        
+0003F0r 1               
+0003F0r 1               clkhi:
+0003F0r 1  AD 00 DD     	lda d2pra
+0003F3r 1  29 EF        	and #($ff-CLK_OUT)
+0003F5r 1  8D 00 DD     	sta d2pra
+0003F8r 1  60               rts
+0003F9r 1               
+0003F9r 1               ;set clock line low  (inverted)
+0003F9r 1               clklo:
+0003F9r 1  AD 00 DD     	lda d2pra
+0003FCr 1  09 10        	ora #CLK_OUT
+0003FEr 1  8D 00 DD     	sta d2pra
+000401r 1  60               rts
+000402r 1               
+000402r 1               ;set data line high (inverted)
+000402r 1               dathi:
+000402r 1  AD 00 DD     	lda d2pra
+000405r 1  29 DF        	and #($ff-DAT_OUT)
+000407r 1  8D 00 DD     	sta d2pra
+00040Ar 1  60               rts
+00040Br 1               
+00040Br 1               ;set data line low (inverted)
+00040Br 1               datlo:
+00040Br 1  AD 00 DD     	lda d2pra
+00040Er 1  09 20        	ora #DAT_OUT
+000410r 1  8D 00 DD     	sta d2pra
+000413r 1  60               rts
+000414r 1               
+000414r 1               
+000414r 1               
+000414r 1               debpia:
+000414r 1  AD 00 DD     	lda d2pra       ;debounce the port
+000417r 1  CD 00 DD     	cmp d2pra
+00041Ar 1  D0 F8        	bne debpia
+00041Cr 1  0A           	asl a           ;shift the data bit into the carry...
+00041Dr 1  60           	rts             ;...and the clock into neg flag
+00041Er 1               
+00041Er 1               ;delay 1ms using loop
+00041Er 1               delay1ms:
+00041Er 1  8A           	txa             ;save .x
+00041Fr 1  A2 B8        	ldx #200-16     ;1000us-(1000/500*8=#40us holds)
+000421r 1  CA           delay1ms1:	dex             ;5us loop
+000422r 1  D0 FD        	bne delay1ms1
+000424r 1  AA           	tax             ;restore .x
+000425r 1  60           	rts
+000426r 1               
+000426r 1               read_sector:
+000426r 1               ; reset counter
+000426r 1  A9 00            lda #0
+000428r 1  8D rr rr         sta sector_offset
+00042Br 1  A9 09 20 B4      SELECT_DATA
+00042Fr 1  FF A9 62 20  
+000433r 1  96 FF        
+000435r 1               read_loop:
+000435r 1               ; read a character
+000435r 1  20 A5 FF         jsr ACPTR ; read a character from the drive
+000438r 1  AE rr rr         ldx sector_offset
+00043Br 1  9D 00 C0         sta SECTOR_DST,x
+00043Er 1  EE rr rr         inc sector_offset
+000441r 1  D0 F2            bne read_loop
+000443r 1  60               rts
+000444r 1               
+000444r 1               print_sector:
+000444r 1               ; reset counter
+000444r 1  A9 00            lda #0
+000446r 1  8D rr rr         sta sector_offset
+000449r 1               
+000449r 1               print_loop:
+000449r 1  AE rr rr         ldx sector_offset
+00044Cr 1  BD 00 C0         lda SECTOR_DST,x
+00044Fr 1  A8               tay
+000450r 1  20 rr rr         jsr print_hex8
+000453r 1  A9 20            lda #' '
+000455r 1  20 D2 FF         jsr CHROUT
+000458r 1  EE rr rr         inc sector_offset
+00045Br 1  D0 EC            bne print_loop
+00045Dr 1               
+00045Dr 1  A9 0D                lda #$0d ; newline
+00045Fr 1  20 D2 FF             jsr CHROUT
+000462r 1               
+000462r 1               ; print profiling data
+000462r 1               ;        PRINT_TEXT time1
+000462r 1               ;        PRINT_HEX16 profile1
+000462r 1               ;        lda #' '
+000462r 1               ;        jsr CIOUT
+000462r 1               ;        PRINT_HEX16 profile2
+000462r 1               ;        lda #' '
+000462r 1               ;        jsr CIOUT
+000462r 1               ;        PRINT_HEX16 profile3
+000462r 1               ;        lda #$0a
+000462r 1               ;        jsr CIOUT
+000462r 1               ;        lda #$0a
+000462r 1               ;        jsr CIOUT
+000462r 1               ;        lda #$0a
+000462r 1               ;        jsr CIOUT
+000462r 1               ;        lda #$0a
+000462r 1               ;        jsr CIOUT
+000462r 1               
+000462r 1               
+000462r 1  60                   rts ; donechak
+000463r 1               
+000463r 1               print:
+000463r 1  A2 00            ldx #$00          ; initialize X register for indexing
+000465r 1               printmod:
+000465r 1  BD FF FF         lda $ffff,x       ; load the character from the message
+000468r 1  F0 07            beq print2        ; if character is zero, we are done
+00046Ar 1  20 D2 FF             jsr CHROUT     ; call CIOUT routine to send the character to the serial port
+00046Dr 1  E8                   inx           ; increment X register
+00046Er 1  4C rr rr             jmp printmod  ; repeat the loop
+000471r 1               print2:
+000471r 1  60               rts
+000472r 1               
+000472r 1               ; print the value of Y.  Overwrites A, X
+000472r 1               hex_table:
+000472r 1  30 31 32 33      .byte "0123456789abcdef"
+000476r 1  34 35 36 37  
+00047Ar 1  38 39 41 42  
+000482r 1               print_hex8:
+000482r 1  98               tya
+000483r 1  29 F0            and #$f0
+000485r 1  18               clc
+000486r 1  6A               ror A
+000487r 1  6A               ror A
+000488r 1  6A               ror A
+000489r 1  6A               ror A
+00048Ar 1  AA               tax
+00048Br 1  BD rr rr         lda hex_table,x
+00048Er 1  20 D2 FF         jsr CHROUT
+000491r 1  98               tya
+000492r 1  29 0F            and #$0f
+000494r 1  AA               tax
+000495r 1  BD rr rr         lda hex_table,x
+000498r 1  20 D2 FF         jsr CHROUT
+00049Br 1  60               rts
+00049Cr 1               
+00049Cr 1               
+00049Cr 1               
+00049Cr 1               
+00049Cr 1               
+00049Cr 1               

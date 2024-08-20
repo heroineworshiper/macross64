@@ -1,0 +1,376 @@
+; drive resident program for reading sectors
+; based on 
+; https://github.com/mist64/fastboot1541/blob/master/start.s
+
+; 1541 ROM:
+; https://g3sl.github.io/c1541rom.html
+
+
+.segment	"FCODE"
+
+
+; from 1541 ROM
+PB := $1800 ; Data port B - Serial data I/O
+;Bits for PB
+DAT_OUT := $02 ; inverse of line voltage
+CLK_OUT  := $08 ; inverse of line voltage
+DAT_IN  := $01 ; inverse of line voltage
+CLK_IN   := $04 ; inverse of line voltage
+ATN_IN   := $80 ; inverse of attention voltage
+
+DSKCNT := $1c00
+LED := $08 ; 1 for on
+
+; the sector buffer
+BUFFER := $0300
+
+TEMP := $05
+
+; the subroutine
+READ_SECTOR := $d586
+; arguments for the sector read
+TRACK := $06
+SECTOR := $07
+CLKLOW := $e9ae
+
+.macro SET_LITERAL16 address, value
+    lda #<value
+    sta address
+    lda #>value
+    sta address + 1
+.endmacro
+
+
+.macro PRINT_TEXT string
+    SET_LITERAL16 printmod + 1, string ; self modifying code
+    jsr print
+.endmacro
+
+; begin
+    sei ; disable interrupts
+    jsr led_off
+	lda #0  ; clock high, data high
+	sta PB
+
+; delay 100ms
+;    ldy #100
+;delay:
+;    jsr delay1ms
+;    dey
+;    bne delay
+
+loop:
+; wait for ATN low
+wait_atn1:
+    lda PB
+    and #ATN_IN
+    beq wait_atn1
+
+; wait for ATN high
+wait_atn2:
+    lda PB
+    and #ATN_IN
+    bne wait_atn2
+
+
+; copy pin to the LED
+;test_pin:
+;    lda PB
+;    and #DAT_IN
+;    bne test_pin2
+;        lda DSKCNT
+;        and #($ff - LED) ; LED off
+;        sta DSKCNT
+;        jmp test_pin
+;test_pin2:
+;        lda DSKCNT
+;        ora #LED ; LED on
+;        sta DSKCNT
+;        jmp test_pin
+
+
+
+
+    ldx #16
+read_bit:
+; wait for CLK low
+    lda PB
+    and #CLK_IN
+    beq read_bit ; CLK_IN=0 if high
+
+read_bit2:
+; wait for CLK high
+    lda PB
+    and #CLK_IN
+    bne read_bit2 ; CLK_IN=1 if low
+
+
+; read the bit
+    clc ; set next bit to 0
+    lda PB
+    eor #DAT_IN ; invert DAT pin
+    ror ; shift DAT into carry
+; shift it in, least significant 1st, sector 1st
+    ror TRACK
+    ror SECTOR
+    dex
+    bne read_bit
+
+    lda #0
+    sta $f9 ; read into buffer $0300
+
+	lda #CLK_OUT  ; clock low to indicate read started
+	sta PB
+
+
+    jsr led_on
+    cli ; enable interrupts
+    jsr READ_SECTOR ; minimum time required for host to detect the read starting
+    sei ; disable interrupts to send data
+
+	lda #0  ; clock high to indicate read finished
+	sta PB
+    jsr led_off
+
+
+
+send_loop:
+; we can use $f9 as the byte counter, since we'll return it to 0
+; so it holds the correct buffer number "0" when we read the next sector
+	ldx $f9
+;	lda BUFFER,x ; read from sector
+    lda #$ff ; test value
+
+; first encode
+	eor #3 ; fix up for receiver side (VIC bank!)
+	pha ; save original
+	lsr
+	lsr
+	lsr
+	lsr ; get high nybble
+	tax ; to X
+	ldy enc_tab,x ; super-encoded high nybble in Y
+	ldx #0
+	stx PB ; clock high, data high -> we're ready to send!
+	pla
+	and #$0F ; lower nybble
+	tax
+	lda enc_tab,x ; super-encoded low nybble in A
+    pha
+
+; then wait for C64 to be ready (all pins high)
+wait_c64:
+	ldx PB
+	beq wait_c64
+
+; then send
+	sta PB
+	asl
+	and #$0F
+	sta PB
+	tya
+	nop
+	sta PB
+	asl
+	and #$0F
+	sta PB
+
+	jsr CLKLOW ; clock low, 10 cycles later
+
+	inc $f9
+	bne send_loop
+
+; release data line
+    lda #0
+    sta PB ; 1 bit.  clock high, data high
+    
+
+;    jsr led_off
+    jmp loop
+
+enc_tab:
+	.byte %1111, %0111, %1101, %0101, %1011, %0011, %1001, %0001
+	.byte %1110, %0110, %1100, %0100, %1010, %0010, %1000, %0000
+
+; copy CLK to the LED
+;test_clk:
+;    lda PB
+;    and #CLK_IN
+;    bne test_clk2
+;        lda DSKCNT
+;        and #($ff - LED) ; LED off
+;        sta DSKCNT
+;        jmp test_clk
+;test_clk2:
+;        lda DSKCNT
+;        ora #LED ; LED on
+;        sta DSKCNT
+;        jmp test_clk
+
+; copy DAT to the LED
+;test_dat:
+;    lda PB
+;    and #DAT_IN
+;    bne test_dat2
+;        lda DSKCNT
+;        and #($ff - LED) ; LED off
+;        sta DSKCNT
+;        jmp test_dat
+;test_dat2:
+;        lda DSKCNT
+;        ora #LED ; LED on
+;        sta DSKCNT
+;        jmp test_dat
+
+
+;delay 1ms using loop
+delay1ms:
+    pha
+	txa             ;save X, A
+	ldx #200-16     ;1000us-(1000/500*8=#40us holds)
+delay1ms1:
+	dex             ;5us loop
+	bne delay1ms1
+	tax             ;restore X, A
+    pla
+	rts
+
+delay250ms:
+    ldy #250
+delay250ms2:
+    jsr delay1ms
+    dey
+    bne delay250ms2
+        rts
+
+led_off:
+    pha
+    lda DSKCNT
+    and #($ff - LED) ; LED off
+    sta DSKCNT
+    pla
+    rts
+
+led_on:
+    pha
+    lda DSKCNT
+    ora #LED ; LED on
+    sta DSKCNT
+    pla
+    rts
+
+hang:
+    jmp hang
+
+
+; print the value of A.  Overwrites A, X, Y
+hex_table:
+    .byte "0123456789abcdef"
+print_hex8:
+    sta TEMP ; save original value for later
+    and #$f0
+    clc
+    ror A
+    ror A
+    ror A
+    ror A
+    tax
+    lda hex_table,x
+    tay
+    jsr send_debug
+    lda TEMP ; get back original value
+    and #$0f
+    tax
+    lda hex_table,x
+    tay
+    jsr send_debug
+    rts
+
+
+; send Y to the debug output
+; drive must drive clock because it has to fetch new bytes
+send_debug:
+; wait for ATN HI
+    lda PB
+    and #DAT_IN
+    bne send_debug
+
+    ldx #8
+send_debug2:
+; shift bit to carry
+    tya
+    ror a
+    tay
+    bcc send_debug3
+        lda PB ; DAT hi, CLK low
+        and #($ff - DAT_OUT)
+        ora #CLK_OUT
+        sta PB
+        jmp send_debug4
+send_debug3:
+    lda PB ; DAT low, CLK low
+    ora #(DAT_OUT | CLK_OUT)
+    sta PB
+send_debug4:
+    jsr debpia
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+; CLK high
+    lda PB
+    and #($FF - CLK_OUT)
+    sta PB
+    jsr debpia
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+; next bit
+    dex
+    bne send_debug2
+        lda #0 ; DAT high, CLK high
+        sta PB
+; host needs time to print it
+;        jsr delay1ms
+        rts
+
+; blink A
+blink_debug:
+    ldx #8
+blink_debug3:
+    jsr led_off
+    jsr delay250ms
+    jsr delay250ms
+    jsr delay250ms
+    jsr delay250ms
+    jsr led_on
+    asl
+    bcs blink_debug1
+        jsr delay250ms
+        jmp blink_debug2
+blink_debug1:
+    jsr delay250ms
+    jsr delay250ms
+    jsr delay250ms
+    jsr delay250ms
+blink_debug2:
+    dex
+    bne blink_debug3
+        jsr led_off
+        rts
+
+
+debpia:
+	lda PB       ;debounce the port
+	cmp PB
+	bne debpia
+	rts

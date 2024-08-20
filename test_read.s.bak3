@@ -1,0 +1,463 @@
+.autoimport	on              ; imports C library functions
+.forceimport	__STARTUP__ ; imports STARTUP, INIT, ONCE
+.export		_main           ; expose mane to the C library
+.include        "zeropage.inc"
+.include        "cbm_kernal.inc"
+
+; secondary & logical addresses for the world drive
+CONTROL = 15
+DATA = 2
+WORLD_DRIVE = 9
+; sector buffer for testing
+SECTOR_DST = $c000
+; start of loader in drive memory
+LOADER_START = $0400
+; bytes per m-w command
+LOADER_FRAGMENT = 34
+
+.segment "DATA"
+; zero page aliases
+byteaddr := tmp1		; 2 bytes
+temp1: .res 1
+temp2: .res 1
+temp3: .res 1
+sector_offset: .res 1
+pointer: .res 2
+counter: .res 1
+; times
+profile1: .res 2
+profile2: .res 2
+profile3: .res 2
+profile4: .res 2
+
+
+; from kernal source
+cia1	=$dc00                  ;device1 6526 (page1 irq)
+d1pra	=cia1+0
+colm	=d1pra                  ;keyboard matrix
+d1prb	=cia1+1
+rows	=d1prb                  ;keyboard matrix
+d1ddra	=cia1+2
+d1ddrb	=cia1+3
+d1t1l	=cia1+4
+d1t1h	=cia1+5
+d1t2l	=cia1+6
+d1t2h	=cia1+7
+d1tod1	=cia1+8
+d1tods	=cia1+9
+d1todm	=cia1+10
+d1todh	=cia1+11
+d1sdr	=cia1+12
+d1icr	=cia1+13
+d1cra	=cia1+14
+d1crb	=cia1+15
+
+cia2	=$dd00                  ;device2 6526 (page2 nmi)
+d2pra	=cia2+0 ; the data port
+CLK_OUT := $10 ; inverse of line voltage
+DAT_OUT := $20 ; inverse of line voltage
+CLK_IN := $40  ; direct line voltage
+DAT_IN := $80  ; direct line voltage
+
+d2prb	=cia2+1
+d2ddra	=cia2+2
+d2ddrb	=cia2+3
+d2t1l	=cia2+4
+d2t1h	=cia2+5
+d2t2l	=cia2+6
+d2t2h	=cia2+7
+d2tod1	=cia2+8
+d2tods	=cia2+9
+d2todm	=cia2+10
+d2todh	=cia2+11
+d2sdr	=cia2+12
+d2icr	=cia2+13
+d2cra	=cia2+14
+d2crb	=cia2+15
+
+.segment	"CODE"
+
+.include "common.inc"
+
+
+.macro SELECT_CONTROL
+    lda #WORLD_DRIVE ; write to the command channel
+    jsr LISTEN
+    lda #(CONTROL | $60) ; secondary address needs to be ored with 0x60
+    jsr SECOND
+.endmacro
+
+.macro SELECT_DATA
+    lda #WORLD_DRIVE ; read from the data channel
+    jsr TALK
+    lda #(DATA | $60) ; secondary address needs to be ored with 0x60
+    jsr TKSA
+.endmacro
+
+
+welcome:
+    .byte "welcome to macross64"
+    .byte $0a, $00    ; null terminator for the message
+
+loading:
+    .byte "loading loader"
+    .byte $0a, $00    ; null terminator for the message
+sector_done:
+    .byte "sector done"
+    .byte $0a, $00    ; null terminator for the message
+running:
+    .byte "running loader"
+    .byte $0a, $00    ; null terminator for the message
+loader_started:
+    .byte "loader started"
+    .byte $0a, $00    ; null terminator for the message
+reading1:
+    .byte "reading1"
+    .byte $0a, $00    ; null terminator for the message
+
+reading2:
+    .byte "reading2"
+    .byte $0a, $00    ; null terminator for the message
+
+reading3:
+    .byte "reading3"
+    .byte $0a, $00    ; null terminator for the message
+
+time1:
+    .byte "time1: "
+    .byte $00    ; null terminator for the message
+time2:
+    .byte "time2: "
+    .byte $00    ; null terminator for the message
+time3:
+    .byte "time3: "
+    .byte $00    ; null terminator for the message
+
+data_name:
+    .byte "#"
+
+sector_name:
+    .byte "u1 2 0 1 0"
+
+
+
+;set clock line high (inverted)
+.macro CLKHI
+	lda d2pra
+	and #($ff-CLK_OUT)
+	sta d2pra
+.endmacro
+
+;set clock line low  (inverted)
+.macro CLKLO
+	lda d2pra
+	ora #CLK_OUT
+	sta d2pra
+.endmacro
+
+;set data line high (inverted)
+.macro DATAHI
+	lda d2pra
+	and #($ff-DAT_OUT)
+	sta d2pra
+.endmacro
+
+;set data line low (inverted)
+.macro DATALO
+	lda d2pra
+	ora #DAT_OUT
+	sta d2pra
+.endmacro
+
+debpia:	lda d2pra       ;debounce the pia
+	cmp d2pra
+	bne debpia
+	asl a           ;shift the data bit into the carry...
+	rts             ;...and the clock into neg flag
+
+;delay 1ms using loop
+w1ms:
+	txa             ;save .x
+	ldx #200-16     ;1000us-(1000/500*8=#40us holds)
+w1ms1:	dex             ;5us loop
+	bne w1ms1
+	tax             ;restore .x
+	rts
+
+read_sector:
+; reset counter
+    lda #0
+    sta sector_offset
+    SELECT_DATA
+read_loop:
+; read a character
+    jsr ACPTR ; read a character from the drive
+    ldx sector_offset
+    sta SECTOR_DST,x
+    inc sector_offset
+    bne read_loop
+    rts
+
+print_sector:
+; reset counter
+    lda #0
+    sta sector_offset
+    SELECT_PRINTER
+
+print_loop:
+    ldx sector_offset
+    lda SECTOR_DST,x
+    tay
+    jsr print_hex8
+    lda #' '
+    jsr CIOUT
+    inc sector_offset
+    bne print_loop
+
+        lda #$0a ; newline
+        jsr CIOUT
+
+; print profiling data
+;        PRINT_TEXT time1
+;        PRINT_HEX16 profile1
+;        lda #' '
+;        jsr CIOUT
+;        PRINT_HEX16 profile2
+;        lda #' '
+;        jsr CIOUT
+;        PRINT_HEX16 profile3
+;        lda #$0a
+;        jsr CIOUT
+;        lda #$0a
+;        jsr CIOUT
+;        lda #$0a
+;        jsr CIOUT
+;        lda #$0a
+;        jsr CIOUT
+
+
+        rts ; donechak
+
+
+
+.proc	_main: near
+
+    INIT_DEBUG
+
+; print something
+    PRINT_TEXT welcome
+
+
+    PRINT_TEXT loading
+
+
+; open control channel
+    lda #CONTROL ; logical number
+    ldx #WORLD_DRIVE       ; drive number
+    ldy #CONTROL ; secondary address
+    jsr SETLFS
+    lda #0
+    ldx #0
+    ldy #0
+    jsr SETNAM
+    jsr OPEN
+
+
+; load the loader
+    SET_LITERAL16 pointer, LOADER_START
+loader_loop:
+;    SELECT_PRINTER
+;    PRINT_HEX16 loader_mod1 + 1
+;    lda #$0a
+;    jsr CIOUT
+
+    SELECT_CONTROL
+    lda #'m'
+    jsr CIOUT
+    lda #'-'
+    jsr CIOUT
+    lda #'w'
+    jsr CIOUT
+    lda pointer ; send dst address
+    jsr CIOUT
+    lda pointer + 1
+    jsr CIOUT
+    lda #LOADER_FRAGMENT ; send number of bytes
+    jsr CIOUT
+
+; send 34 bytes
+    ldx #0
+loader_mod1:
+    lda fastload_start,x ; load form src address
+    jsr CIOUT
+    inx
+    cpx #LOADER_FRAGMENT
+    bne loader_mod1
+        jsr UNLSN ; execute the command
+; next 34 bytes
+        ADD_LITERAL16 loader_mod1 + 1, loader_mod1 + 1, LOADER_FRAGMENT
+        ADD_LITERAL16 pointer, pointer, LOADER_FRAGMENT
+        BRANCH_GREATEREQUAL16 loader_mod1 + 1, fastload_end, loader_done
+            jmp loader_loop
+
+loader_done:
+    PRINT_TEXT running
+
+    SELECT_CONTROL
+    lda #'m'
+    jsr CIOUT
+    lda #'-'
+    jsr CIOUT
+    lda #'e'
+    jsr CIOUT
+    lda #<LOADER_START
+    jsr CIOUT
+    lda #>LOADER_START
+    jsr CIOUT
+    jsr UNLSN ; execute the command
+
+
+    CLKHI
+    DATAHI
+
+
+    sei ; disable interrupts
+
+; wait for the loader to indicate a start by lowering & raising CLK
+wait_loader:
+    lda d2pra
+    and #CLK_IN
+    bne wait_loader
+    
+wait_loader2:
+    lda d2pra
+    and #CLK_IN
+    beq wait_loader2
+
+    PRINT_TEXT loader_started
+
+loop:
+    sei ; disable interrupts
+
+; send the sector & track number
+    lda #1
+    sta temp1 ; track
+    lda #0
+    sta temp2 ; sector
+    ldx #16
+start_read:
+    CLKLO
+    ror temp1
+    ror temp2
+    bcs start_read2 ; least significant bit is 1
+        DATALO ; least significant bit is 0
+        jmp start_read3
+start_read2:
+    DATAHI
+start_read3:
+    CLKHI
+    dex
+    bne start_read
+
+
+; wait for clock low to indicate read started
+wait_loader3:
+    lda d2pra
+    and #CLK_IN
+    bne wait_loader3
+
+; drive controls data line
+    DATAHI
+; wait for clock high to indicate read complete
+    cli ; enable interrupts
+wait_loader4:
+    lda d2pra
+    and #CLK_IN
+    beq wait_loader4
+
+
+    sei ; disable interrupts
+; read out 256 bytes
+    ldy #0
+byte_loop:
+; read out 8 bits
+    ldx #8
+bit_loop:
+; lower clock
+    CLKLO
+    nop
+    nop
+    nop
+    nop
+; raise clock
+    CLKHI
+    nop
+    nop
+    nop
+    nop
+    clc
+    lda d2pra
+    and #DAT_IN
+    beq bit_loop1 ; low if bit is 0
+        sec
+bit_loop1:
+    ror temp1 ; shift it in, least significant 1st
+    dex
+    bne bit_loop
+        lda temp1
+        sta SECTOR_DST, y
+        iny
+        bne byte_loop
+
+; get the drive to release data
+; lower clock
+    CLKLO
+    nop
+    nop
+    nop
+; raise clock
+    CLKHI
+    nop
+    nop
+    nop
+
+
+    cli ; enable interrupts
+
+    PRINT_TEXT sector_done
+    jsr print_sector
+
+    jmp loop
+
+done:
+; donechak
+    ldx SCREEN
+    jsr CHKOUT
+    rts
+
+;loop:
+;    ldy #$ff
+;loop2:
+;    jsr w1ms ; delay
+;    dey
+;    bne loop2
+
+;    lda d2pra
+;    and #$c0 ; show data & clock in
+;    tay
+;    jsr print_hex8
+;    lda #$0a
+;    jsr CIOUT
+;    jmp loop
+
+
+
+fastload_start:
+.include "fastload.inc"
+fastload_end:
+
+
+
+
+.endproc
+

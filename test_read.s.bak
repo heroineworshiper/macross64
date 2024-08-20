@@ -1,0 +1,272 @@
+.autoimport	on              ; imports C library functions
+.forceimport	__STARTUP__ ; imports STARTUP, INIT, ONCE
+.export		_main           ; expose mane to the C library
+.include        "zeropage.inc"
+.include        "cbm_kernal.inc"
+
+.segment "DATA"
+; zero page aliases
+byteaddr := tmp1		; 2 bytes
+temp1: .res 1
+temp2: .res 1
+temp3: .res 1
+
+
+.segment	"CODE"
+
+.include "common.inc"
+
+; secondary & logical addresses for the world drive
+CONTROL = 15
+DATA = 2
+WORLD_DRIVE = 9
+
+; default output device for CHROUT
+DEFAULT_OUT = $9a
+
+welcome:
+    .byte "welcome to macross64"
+    .byte $0a, $00    ; null terminator for the message
+
+reading1:
+    .byte "reading1"
+    .byte $0a, $00    ; null terminator for the message
+
+reading2:
+    .byte "reading2"
+    .byte $0a, $00    ; null terminator for the message
+
+reading3:
+    .byte "reading3"
+    .byte $0a, $00    ; null terminator for the message
+
+data_name:
+    .byte "#"
+
+sector_name:
+    .byte "u1 2 0 1 0"
+
+print_sector:
+; reset counter
+    lda #0
+
+read_loop:
+; store counter
+    pha
+
+;    ldx #DATA
+;    jsr CHKIN
+    lda #WORLD_DRIVE ; read from the data channel
+    jsr TALK
+    lda #(DATA | $60) ; secondary address needs to be ored with 0x60
+    jsr TKSA
+
+; read a character
+;    jsr CHRIN
+    jsr ACPTR ; read a character from the drive
+
+    pha
+;    ldx #PRINTER
+;    jsr CHKOUT
+; direct CHROUT to the printer
+    lda #PRINTER
+    jsr LISTEN
+    pla
+
+; print it
+    tay
+    jsr print_hex8
+    lda #' '
+;    jsr CHROUT
+    jsr CIOUT
+
+; increment counter
+    pla
+    adc #1
+    bne read_loop
+
+        lda #$0a ; newline
+        jsr CIOUT
+        rts ; donechak
+
+
+
+.proc	_main: near
+
+    INIT_DEBUG
+
+; print something
+    PRINT_TEXT welcome
+
+; open data channel
+    lda #DATA ; logical number
+    ldx #WORLD_DRIVE    ; drive number
+    ldy #DATA ; secondary address
+    jsr SETLFS
+    lda #1
+    ldx #<data_name
+    ldy #>data_name
+    jsr SETNAM
+    jsr OPEN
+
+; open control channel
+    lda #CONTROL ; logical number
+    ldx #WORLD_DRIVE       ; drive number
+    ldy #CONTROL ; secondary address
+    jsr SETLFS
+    lda #0
+    ldx #0
+    ldy #0
+    jsr SETNAM
+    jsr OPEN
+
+
+; direct CHROUT to the control channel to sniff the secondary address
+;    ldx #DATA
+;    jsr CHKOUT
+; secondary address
+;    lda $b9
+;    sta secondary
+
+
+;    ldx #PRINTER
+;    jsr CHKOUT
+
+; secondary address
+;    ldy secondary
+;    jsr print_hex8
+;    lda #' '
+;    jsr CHROUT
+; device number
+;    ldy temp2
+;    jsr print_hex8
+;    lda #' '
+;    jsr CHROUT
+; logical address
+;    ldy temp3
+;    jsr print_hex8
+;    lda #' '
+;    jsr CHROUT
+;    lda #$0a
+;    jsr CHROUT
+
+
+; check status.  vicerc needs Drive9Type=1541 if bit 8 is 1
+;    lda $90
+;    pha
+; direct CHROUT to the printer
+;    ldx #PRINTER
+;    jsr CHKOUT
+; print the status
+;    pla
+;    tay
+;    jsr print_hex8
+;    lda #$0a ; newline
+;    jsr CHROUT
+
+;    PRINT_TEXT reading1
+
+; read sector 0
+;    jsr print_sector
+
+; direct CHROUT to the control channel
+;    ldx #CONTROL
+;    jsr CHKOUT
+
+
+; calling listen directly
+    lda #WORLD_DRIVE
+    jsr LISTEN
+    lda #(CONTROL | $60) ; secondary address needs to be ored with 0x60
+    jsr SECOND
+
+; fileno
+;    lda $b8
+;    sta temp3
+; secondary address
+;    lda $b9
+;    sta secondary
+; device number
+;    lda $ba
+;    sta temp2
+
+;    ldx #CONTROL
+;    jsr CHKOUT
+
+; command to read sector 0
+    lda #'u'
+    jsr CIOUT
+    lda #'1'
+    jsr CIOUT
+    lda #' '
+    jsr CIOUT
+    lda #'2' ; logical device
+    jsr CIOUT
+    lda #' '
+    jsr CIOUT
+    lda #'0'
+    jsr CIOUT
+    lda #' '
+    jsr CIOUT
+    lda #'1' ; track
+    jsr CIOUT
+    lda #' '
+    jsr CIOUT
+    lda #'0' ; sector
+    jsr CIOUT
+
+    jsr UNLSN ; execute the command
+
+    PRINT_TEXT reading1
+    jsr print_sector
+
+
+; direct CHROUT to the control channel
+;    ldx #CONTROL
+;    jsr CHKOUT
+
+    lda #WORLD_DRIVE
+    jsr LISTEN
+    lda #(CONTROL | $60)
+    jsr SECOND
+    lda #9
+    sta DEFAULT_OUT
+
+
+; command to read sector 1
+    lda #'u'
+    jsr CIOUT
+    lda #'1'
+    jsr CIOUT
+    lda #' '
+    jsr CIOUT
+    lda #'2' ; logical device
+    jsr CIOUT
+    lda #' '
+    jsr CIOUT
+    lda #'0'
+    jsr CIOUT
+    lda #' '
+    jsr CIOUT
+    lda #'1' ; track
+    jsr CIOUT
+    lda #' '
+    jsr CIOUT
+    lda #'1' ; sector
+    jsr CIOUT
+
+    jsr UNLSN ; execute the command
+    PRINT_TEXT reading2
+    jsr print_sector
+
+done:
+; direct CHROUT to the screen to print ready on the screen
+    ldx SCREEN            ; logical number
+    jsr CHKOUT
+    ldx SCREEN
+    jsr CHKIN
+    rts               ; return from subroutine
+
+
+.endproc
+

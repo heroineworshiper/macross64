@@ -1,0 +1,340 @@
+.autoimport	on              ; imports C library functions
+.forceimport	__STARTUP__ ; imports STARTUP, INIT, ONCE
+.export		_main           ; expose mane to the C library
+.include        "zeropage.inc"
+.include        "cbm_kernal.inc"
+
+.segment "DATA"
+; zero page aliases
+byteaddr := tmp1		; 2 bytes
+temp1: .res 1
+temp2: .res 1
+temp3: .res 1
+sector_offset: .res 1
+; times
+profile1: .res 2
+profile2: .res 2
+profile3: .res 2
+profile4: .res 2
+
+; from kernal source
+cia1	=$dc00                  ;device1 6526 (page1 irq)
+d1pra	=cia1+0
+colm	=d1pra                  ;keyboard matrix
+d1prb	=cia1+1
+rows	=d1prb                  ;keyboard matrix
+d1ddra	=cia1+2
+d1ddrb	=cia1+3
+d1t1l	=cia1+4
+d1t1h	=cia1+5
+d1t2l	=cia1+6
+d1t2h	=cia1+7
+d1tod1	=cia1+8
+d1tods	=cia1+9
+d1todm	=cia1+10
+d1todh	=cia1+11
+d1sdr	=cia1+12
+d1icr	=cia1+13
+d1cra	=cia1+14
+d1crb	=cia1+15
+
+cia2	=$dd00                  ;device2 6526 (page2 nmi)
+d2pra	=cia2+0
+d2prb	=cia2+1
+d2ddra	=cia2+2
+d2ddrb	=cia2+3
+d2t1l	=cia2+4
+d2t1h	=cia2+5
+d2t2l	=cia2+6
+d2t2h	=cia2+7
+d2tod1	=cia2+8
+d2tods	=cia2+9
+d2todm	=cia2+10
+d2todh	=cia2+11
+d2sdr	=cia2+12
+d2icr	=cia2+13
+d2cra	=cia2+14
+d2crb	=cia2+15
+
+.segment	"CODE"
+
+.include "common.inc"
+
+; secondary & logical addresses for the world drive
+CONTROL = 15
+DATA = 2
+WORLD_DRIVE = 9
+; sector buffer for testing
+SECTOR_DST = $c000
+
+.macro SELECT_CONTROL
+    lda #WORLD_DRIVE ; write to the command channel
+    jsr LISTEN
+    lda #(CONTROL | $60) ; secondary address needs to be ored with 0x60
+    jsr SECOND
+.endmacro
+
+.macro SELECT_DATA
+    lda #WORLD_DRIVE ; read from the data channel
+    jsr TALK
+    lda #(DATA | $60) ; secondary address needs to be ored with 0x60
+    jsr TKSA
+.endmacro
+
+
+welcome:
+    .byte "welcome to macross64"
+    .byte $0a, $00    ; null terminator for the message
+
+reading1:
+    .byte "reading1"
+    .byte $0a, $00    ; null terminator for the message
+
+reading2:
+    .byte "reading2"
+    .byte $0a, $00    ; null terminator for the message
+
+reading3:
+    .byte "reading3"
+    .byte $0a, $00    ; null terminator for the message
+
+time1:
+    .byte "time1: "
+    .byte $00    ; null terminator for the message
+time2:
+    .byte "time2: "
+    .byte $00    ; null terminator for the message
+time3:
+    .byte "time3: "
+    .byte $00    ; null terminator for the message
+
+data_name:
+    .byte "#"
+
+sector_name:
+    .byte "u1 2 0 1 0"
+
+
+
+io_poll:
+; release clock line
+	 lda d2pra
+	 and #$ff-$10 ; bit 4 (clock out) to 0
+	 sta d2pra
+
+io_poll2:
+    lda d2pra ; load clock
+    cmp d2pra ; debounce
+    bne io_poll2
+    asl a ; move data (bit 7) into carry & clock (bit 6) into N flag (sign bit)
+    bpl io_poll2 ; clock high if ready (N == 1) repeat if not ready (N == 0)
+        rts
+
+clkhi:	;set clock line high (inverted)
+	lda d2pra
+	and #$ff-$10
+	sta d2pra
+	rts
+
+clklo:	;set clock line low  (inverted)
+	lda d2pra
+	ora #$10
+	sta d2pra
+	rts
+
+datahi:	;set data line high (inverted)
+	lda d2pra
+	and #$ff-$20
+	sta d2pra
+	rts
+
+debpia:	lda d2pra       ;debounce the pia
+	cmp d2pra
+	bne debpia
+	asl a           ;shift the data bit into the carry...
+	rts             ;...and the clock into neg flag
+
+w1ms:	;delay 1ms using loop
+	txa             ;save .x
+	ldx #200-16     ;1000us-(1000/500*8=#40us holds)
+w1ms1:	dex             ;5us loop
+	bne w1ms1
+	tax             ;restore .x
+	rts
+
+read_sector:
+; reset counter
+    lda #0
+    sta sector_offset
+    SELECT_DATA
+read_loop:
+; read a character
+    jsr ACPTR ; read a character from the drive
+    ldx sector_offset
+    sta SECTOR_DST,x
+    inc sector_offset
+    bne read_loop
+    rts
+
+print_sector:
+; reset counter
+    lda #0
+    sta sector_offset
+    SELECT_PRINTER
+
+print_loop:
+    ldx sector_offset
+    lda SECTOR_DST,x
+    tay
+    jsr print_hex8
+    lda #' '
+    jsr CIOUT
+    inc sector_offset
+    bne print_loop
+
+        lda #$0a ; newline
+        jsr CIOUT
+
+; print profiling data
+;        PRINT_TEXT time1
+;        PRINT_HEX16 profile1
+;        lda #' '
+;        jsr CIOUT
+;        PRINT_HEX16 profile2
+;        lda #' '
+;        jsr CIOUT
+;        PRINT_HEX16 profile3
+;        lda #$0a
+;        jsr CIOUT
+;        lda #$0a
+;        jsr CIOUT
+;        lda #$0a
+;        jsr CIOUT
+;        lda #$0a
+;        jsr CIOUT
+
+
+        rts ; donechak
+
+
+
+.proc	_main: near
+
+    INIT_DEBUG
+
+; print something
+    PRINT_TEXT welcome
+
+
+
+; open data channel
+    lda #DATA ; logical number
+    ldx #WORLD_DRIVE    ; drive number
+    ldy #DATA ; secondary address
+    jsr SETLFS
+    lda #1
+    ldx #<data_name
+    ldy #>data_name
+    jsr SETNAM
+    jsr OPEN
+
+; open control channel
+    lda #CONTROL ; logical number
+    ldx #WORLD_DRIVE       ; drive number
+    ldy #CONTROL ; secondary address
+    jsr SETLFS
+    lda #0
+    ldx #0
+    ldy #0
+    jsr SETNAM
+    jsr OPEN
+
+
+loop:
+    SELECT_CONTROL
+
+; command to read sector 0
+    lda #'u'
+    jsr CIOUT
+    lda #'1'
+    jsr CIOUT
+    lda #' '
+    jsr CIOUT
+    lda #'2' ; logical device
+    jsr CIOUT
+    lda #' '
+    jsr CIOUT
+    lda #'0'
+    jsr CIOUT
+    lda #' '
+    jsr CIOUT
+    lda #'1' ; track
+    jsr CIOUT
+    lda #' '
+    jsr CIOUT
+    lda #'0' ; sector
+    jsr CIOUT
+
+
+    jsr UNLSN ; execute the command
+
+
+
+    PRINT_TEXT reading1
+    jsr read_sector
+    jsr print_sector
+
+
+
+
+    SELECT_CONTROL
+
+
+; command to read sector 1
+    lda #'u'
+    jsr CIOUT
+    lda #'1'
+    jsr CIOUT
+    lda #' '
+    jsr CIOUT
+    lda #'2' ; logical device
+    jsr CIOUT
+    lda #' '
+    jsr CIOUT
+    lda #'0'
+    jsr CIOUT
+    lda #' '
+    jsr CIOUT
+    lda #'4' ; track
+    jsr CIOUT
+    lda #' '
+    jsr CIOUT
+    lda #'0' ; sector
+    jsr CIOUT
+
+    jsr UNLSN ; execute the command
+
+    PRINT_TEXT reading2
+    jsr read_sector
+    jsr print_sector
+
+    jmp loop
+
+done:
+; direct CHROUT to the screen to print ready on the screen
+    ldx SCREEN            ; logical number
+    jsr CHKOUT
+    ldx SCREEN
+    jsr CHKIN
+    rts               ; return from subroutine
+
+
+fastload_start:
+.include "fastload.inc"
+fastload_end:
+
+
+
+
+.endproc
+

@@ -1,0 +1,199 @@
+; drive resident program for reading sectors
+; based on 
+; https://github.com/mist64/fastboot1541/blob/master/start.s
+
+; 1541 ROM:
+; https://g3sl.github.io/c1541rom.html
+
+
+.segment	"FCODE"
+
+
+; from 1541 ROM
+PB := $1800 ; Data port B - Serial data I/O
+;Bits for PB
+DATA_OUT := $02 ; inverse of line voltage
+CLK_OUT  := $08 ; inverse of line voltage
+DATA_IN := $01  ; inverse of line voltage
+CLK_IN  := $04  ; inverse of line voltage
+
+
+DSKCNT := $1c00
+LED := $08 ; 1 for on
+
+; the sector buffer
+BUFFER := $0300
+
+TEMP := $05
+
+; the subroutine
+READ_SECTOR := $d586
+; arguments for the sector read
+TRACK := $06
+SECTOR := $07
+
+; begin
+    sei ; disable interrupts
+    jsr led_off
+; loader is running!
+	lda #CLK_OUT ; clock low, data high
+	sta PB 
+    jsr w1ms
+
+loop:
+; wait for host to send the track & sector in 16 bits
+	lda #0  ; clock high, data high
+	sta PB
+
+    ldx #16
+read_bit:
+; wait for CLK low
+    lda PB
+    and #CLK_IN
+    beq read_bit ; CLK_IN=0 if high
+
+read_bit2:
+; wait for CLK high
+    lda PB
+    and #CLK_IN
+    bne read_bit2 ; CLK_IN=1 if low
+
+    clc ; set next bit to 0
+    lda PB
+    and #DATA_IN
+    bne read_bit3 ; DAT_IN=1 if low
+        sec ; next bit is 1
+read_bit3:
+; shift it in, least significant 1st, sector 1st
+    ror TRACK
+    ror SECTOR
+    dex
+    bne read_bit
+
+    lda #0
+    sta $f9 ; buffer $0300 for the read
+
+    jsr led_on
+	lda #CLK_OUT  ; clock low, data high
+	sta PB
+
+    cli ; enable interrupts
+    jsr READ_SECTOR
+    sei ; disable interrupts to send data
+
+	lda #0  ; clock high, data high
+	sta PB
+
+    ldy #0
+byte_loop:
+    lda BUFFER,y
+    sta TEMP
+
+    ldx #8
+bit_loop1:
+; wait for CLK low
+    lda PB
+    and #CLK_IN
+    beq bit_loop1 ; CLK_IN=0 if high
+
+; store bit
+    ror TEMP
+    bcs bit_loop2
+        lda #DATA_OUT ; 0 bit.  clock high, data low
+        sta PB
+        jmp bit_loop3
+bit_loop2:
+    lda #0
+    sta PB ; 1 bit.  clock high, data high
+
+bit_loop3:
+; wait for CLK high
+    lda PB
+    and #CLK_IN
+    bne bit_loop3 ; CLK_IN=1 if low
+
+    dex
+    bne bit_loop1
+        iny
+        bne byte_loop
+
+bit_loop4:
+; wait for CLK low
+    lda PB
+    and #CLK_IN
+    beq bit_loop4 ; CLK_IN=0 if high
+
+; release data line
+    lda #0
+    sta PB ; 1 bit.  clock high, data high
+    
+
+    jsr led_off
+    jmp loop
+
+; copy CLK to the LED
+;test_clk:
+;    lda PB
+;    and #CLK_IN
+;    bne test_clk2
+;        lda DSKCNT
+;        and #($ff - LED) ; LED off
+;        sta DSKCNT
+;        jmp test_clk
+;test_clk2:
+;        lda DSKCNT
+;        ora #LED ; LED on
+;        sta DSKCNT
+;        jmp test_clk
+
+; copy DAT to the LED
+;test_dat:
+;    lda PB
+;    and #DATA_IN
+;    bne test_dat2
+;        lda DSKCNT
+;        and #($ff - LED) ; LED off
+;        sta DSKCNT
+;        jmp test_dat
+;test_dat2:
+;        lda DSKCNT
+;        ora #LED ; LED on
+;        sta DSKCNT
+;        jmp test_dat
+
+
+;delay 1ms using loop
+w1ms:
+	txa             ;save .x
+	ldx #200-16     ;1000us-(1000/500*8=#40us holds)
+w1ms1:	dex             ;5us loop
+	bne w1ms1
+	tax             ;restore .x
+	rts
+
+led_off:
+    lda DSKCNT
+    and #($ff - LED) ; LED off
+    sta DSKCNT
+    rts
+
+led_on:
+    lda DSKCNT
+    ora #LED ; LED on
+    sta DSKCNT
+    rts
+
+hang:
+    jmp hang
+
+;	lda #0 ; buffer $0300 for the read
+;    sta $f9
+
+; then wait for C64 to be ready
+;wait_c64:
+;	ldx $1800
+;	bne wait_c64; needs all 0
+
+;	lda #0
+;	sta $1800 ; clock high data high
+

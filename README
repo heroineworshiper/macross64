@@ -1,0 +1,61 @@
+Disk spooled tile world concepts for commodore 64
+Copyright (C) 2024 Adam Williams <broadcast at earthling dot net>
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+
+------------------------------------------------------------------------------
+
+What you'll find here:
+
+macross.sh, macross.d64, macross.s:
+   Somewhat buggy 2D world which buffered 9 tiles offscreen.
+   wasd navigates
+   This used multicolor bitmap mode to get more colors with a character set.
+   The characters were copied byte by byte into the bitmap.
+
+marineris.sh, marineris.d64, marineris.s:
+    1D smooth scrolling in 1 direction while concurrently loading tiles from disk.
+    Buffers 2 tiles offscreen
+    This used multicolor bitmap mode with complete bitmap frames loaded from disk.
+
+makeworld: make maps for macross.s
+
+makeworld2: make maps for marineris.s
+
+drawer, drawer.C: 
+    A tool to aid drawing with character set based lines.
+    This required guicast in a higher level directory.
+    You would load a background .png, then draw lines on top of it, then save
+    the line drawing as a new .png.
+
+fastload.s: 1541 fast loader
+
+loader.s: C64 side of the fast loader
+
+The world map was conceived to be on a separate disk than the demo
+engine, but the emulator doesn't support a fast loader on drive 9.  The
+world map ended up on the same disk as the demo engine to avoid disk
+swaps.  It's stored as raw sectors.  The table of contents is stored in
+the demo engine.
+
+I/O is slow enough even with the fast loader to make a 1D side scroller
+in 1 direction the only thing which could have enough detail yet be fast
+enough as an uninterrupted scroller.
+
+Any 2D world would have to be paged & loaded on demand.
+
+
+
+

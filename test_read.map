@@ -1,0 +1,30 @@
+Modules list:
+-------------
+test_read.o:
+    CODE              Offs=000000  Size=000579  Align=00001  Fill=0000
+    DATA              Offs=000000  Size=000035  Align=00001  Fill=0000
+    START             Offs=000000  Size=00000E  Align=00001  Fill=0000
+
+
+Segment list:
+-------------
+Name                   Start     End    Size  Align
+----------------------------------------------------
+START                 000800  00080D  00000E  00001
+CODE                  00080D  000D85  000579  00001
+DATA                  003000  003034  000035  00001
+
+
+Exports list by name:
+---------------------
+
+
+
+Exports list by value:
+----------------------
+
+
+
+Imports list:
+-------------
+
